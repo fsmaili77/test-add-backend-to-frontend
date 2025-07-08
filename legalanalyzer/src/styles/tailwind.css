@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primary Colors */
+  --color-primary: #1E3A8A; /* Deep judicial blue - blue-800 */
+  --color-secondary: #64748B; /* Sophisticated slate - slate-500 */
+  --color-accent: #F59E0B; /* Warm amber - amber-500 */
+  
+  /* Background Colors */
+  --color-background: #FAFBFC; /* Soft off-white - gray-50 */
+  --color-surface: #FFFFFF; /* Pure white - white */
+  
+  /* Text Colors */
+  --color-text-primary: #1F2937; /* Rich charcoal - gray-800 */
+  --color-text-secondary: #6B7280; /* Muted gray - gray-500 */
+  
+  /* Status Colors */
+  --color-success: #10B981; /* Professional emerald - emerald-500 */
+  --color-warning: #F59E0B; /* Consistent amber - amber-500 */
+  --color-error: #DC2626; /* Clear red - red-600 */
+  
+  /* Border Colors */
+  --color-border-light: #E5E7EB; /* Hairline border - gray-200 */
+  --color-border-medium: #D1D5DB; /* Medium border - gray-300 */
+  
+  /* Shadow Colors */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+@layer base {
+  body {
+    font-family: 'Source Sans Pro', sans-serif;
+    color: var(--color-text-primary);
+    background-color: var(--color-background);
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', sans-serif;
+  }
+  
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .nav-transition {
+    transition: all 200ms ease-out;
+  }
+  
+  .nav-hover {
+    transition: background-color 200ms ease-out, color 200ms ease-out;
+  }
+  
+  .nav-focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
