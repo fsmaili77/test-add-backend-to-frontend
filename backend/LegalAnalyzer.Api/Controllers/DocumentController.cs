@@ -69,20 +69,71 @@ namespace LegalAnalyzer.Api.Controllers
                 request.Title, request.Content, request.Language);
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
-}
 
-    /* public class CreateDocumentRequest
-    {
-        public string Title { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public string Language { get; set; } = "en";
-    
+        // POST /api/documents/batch — Upload multiple documents
+        [HttpPost("batch")]
+        public async Task<IActionResult> UploadDocuments([FromBody] List<CreateDocumentRequest> requests)
+        {
+            if (requests == null || !requests.Any())
+            {
+                return BadRequest("No documents provided.");
+            }
+
+            var ids = new List<Guid>();
+            foreach (var request in requests)
+            {
+                var id = await _documentService.CreateDocumentAsync(
+                    request.Title, request.Content, request.Language);
+                ids.Add(id);
+            }
+
+            return CreatedAtAction(nameof(GetAll), new { ids }, ids);
+        }
+
+        // POST /api/documents/{id}/analyze — Analyze a specific document
+        [HttpPost("{id}/analyze")]
+        public async Task<IActionResult> AnalyzeDocumentById(Guid id)
+        {
+            try
+            {
+                var analysisResult = await _documentService.AnalyzeDocumentAsync(id);
+                return Ok(analysisResult);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound($"Document with id {id} not found.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+        // POST /api/documents/analyze — Analyze all documents
+        [HttpPost("analyze")]
+        public async Task<IActionResult> AnalyzeAllDocuments()
+        {
+            var analysisResults = await _documentService.AnalyzeAllDocumentsAsync();
+            return Ok(analysisResults);
+        }
+        // POST /api/documents/{id}/summarize — Summarize a specific document
+        [HttpPost("{id}/summarize")]
+        public async Task<IActionResult> SummarizeDocumentById(Guid id)
+        {
+            try
+            {
+                var summaryResult = await _documentService.SummarizeDocumentAsync(id);
+                return Ok(summaryResult);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound($"Document with id {id} not found.");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
     }
 
-    public class UpdateDocumentRequest
-    {
-        public string Title { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public string Language { get; set; } = "en";
-    } */
 }

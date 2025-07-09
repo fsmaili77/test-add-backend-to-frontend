@@ -95,7 +95,7 @@ namespace LegalAnalyzer.Application.Services
 
             await _documentRepository.AddAsync(document);
         }
-        public async Task AnalyzeDocumentAsync(Guid id)
+        public async Task<DocumentDto> AnalyzeDocumentAsync(Guid id)
         {
             var document = await _documentRepository.GetByIdAsync(id);
             if (document == null)
@@ -110,8 +110,79 @@ namespace LegalAnalyzer.Application.Services
             document.Status = "Analyzing";
             await _documentRepository.UpdateAsync(document);
 
+            return new DocumentDto
+            {
+                Id = document.Id,
+                Title = document.Title,
+                Content = document.Content,
+                Language = document.Language,
+                UploadedAt = document.UploadedAt,
+                Status = document.Status,
+                Summary = document.Summary,
+                AnalysisResult = document.AnalysisResult,
+                ErrorMessage = document.ErrorMessage
+            };
         }
-        // Placeholder for document analysis logic
-        // This could involve calling an external service or running a local analysis algorithm
-    }     
+        public async Task<DocumentDto> SummarizeDocumentAsync(Guid id)
+        {
+            var document = await _documentRepository.GetByIdAsync(id);
+            if (document == null)
+            {
+                throw new KeyNotFoundException("Document not found");
+            }
+            if (document.Status != "Analyzed")
+            {
+                throw new InvalidOperationException("Document is not in a state that can be summarized.");
+            }
+
+            // Implement summarization logic here
+            document.Summary = "This is a summary of the document.";
+            document.Status = "Summarized";
+            await _documentRepository.UpdateAsync(document);
+
+            return new DocumentDto
+            {
+                Id = document.Id,
+                Title = document.Title,
+                Content = document.Content,
+                Language = document.Language,
+                UploadedAt = document.UploadedAt,
+                Status = document.Status,
+                Summary = document.Summary,
+                AnalysisResult = document.AnalysisResult,
+                ErrorMessage = document.ErrorMessage
+            };
+        }
+        public async Task<IEnumerable<DocumentDto>> AnalyzeAllDocumentsAsync()
+        {
+            var documents = await _documentRepository.GetAllAsync();
+            var analysisResults = new List<DocumentDto>();
+
+            foreach (var document in documents)
+            {
+                if (document.Status != "Pending")
+                {
+                    continue;
+                }
+
+                document.Status = "Analyzing";
+                await _documentRepository.UpdateAsync(document);
+
+                // Implement analysis logic here
+                var analysisResult = new DocumentDto
+                {
+                    Id = document.Id,
+                    Title = document.Title,
+                    Content = document.Content,
+                    Language = document.Language,
+                    UploadedAt = document.UploadedAt,
+                    Status = "Analyzed"
+                };
+
+                analysisResults.Add(analysisResult);
+            }
+
+            return analysisResults;
+        }
+    }         
 }

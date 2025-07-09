@@ -31,6 +31,7 @@ const mockDocuments = [
         public ICollection<DocumentKeyword> Keywords { get; set; } = new List<DocumentKeyword>();
         public string? ErrorMessage { get; set; } // For storing any error messages during analysis
         public string? AnalysisResult { get; set; } // For storing the result of the analysis, if applicable
+        public string? Summary { get; set; } // For storing the summary of the document, if applicable
 
     }
 

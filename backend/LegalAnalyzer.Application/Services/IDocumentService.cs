@@ -17,6 +17,10 @@ namespace LegalAnalyzer.Application.Services
         Task UpdateDocumentAsync(Guid id, string title, string content, string language);
         Task DeleteDocumentAsync(Guid id);
         Task UploadDocumentAsync(CreateDocumentRequest request);
-        Task AnalyzeDocumentAsync(Guid id);
+        Task<DocumentDto> AnalyzeDocumentAsync(Guid id);
+        Task<DocumentDto> SummarizeDocumentAsync(Guid id);
+        //Analyze all documents
+        Task<IEnumerable<DocumentDto>> AnalyzeAllDocumentsAsync();
+
 }
 }
