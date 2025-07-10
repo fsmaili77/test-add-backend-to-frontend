@@ -7,6 +7,7 @@ import FileDropZone from './components/FileDropZone';
 import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
+import { uploadDocument } from '../../api' // Assuming this is the API function to handle document uploads';
 
 const DocumentUpload = () => {
   const navigate = useNavigate();
@@ -108,15 +109,23 @@ const DocumentUpload = () => {
       // Update all files to uploading status
       setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
 
-      // Simulate upload for each file
-      await Promise.all(
-        selectedFiles.map(async (file) => {
-          await simulateUpload(file);
-          setSelectedFiles(prev => prev.map(f => 
-            f.id === file.id ? { ...f, status: 'completed' } : f
-          ));
-        })
-      );
+      // Upload each file to the backend
+    await Promise.all(
+      selectedFiles.map(async (file) => {
+        try {
+          await uploadDocument(file.file); // <-- Use the native File object
+          setUploadProgress(prev => ({ ...prev, [file.id]: 100 }));
+          setSelectedFiles(prev =>
+            prev.map(f => f.id === file.id ? { ...f, status: 'completed' } : f)
+          );
+        } catch (error) {
+          setErrors(prev => [...prev, `Failed to upload ${file.name}: ${error.message}`]);
+          setSelectedFiles(prev =>
+            prev.map(f => f.id === file.id ? { ...f, status: 'error' } : f)
+          );
+        }
+      })
+    );
 
       // Navigate to analysis dashboard after successful upload
       setTimeout(() => {

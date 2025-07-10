@@ -6,6 +6,8 @@ using LegalAnalyzer.Application.DTOs;
 using LegalAnalyzer.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 using LegalAnalyzer.Application.Requests;
+using Microsoft.AspNetCore.Http;
+using System.IO;
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -58,15 +60,24 @@ namespace LegalAnalyzer.Api.Controllers
 
         // POST /api/documents — Upload a new document
         [HttpPost("upload")]
-        public async Task<IActionResult> UploadDocument([FromForm] CreateDocumentRequest request)
+        public async Task<IActionResult> UploadDocument(
+            [FromForm] string title,
+            [FromForm] string language,
+            [FromForm] IFormFile file)
         {
-            if (request == null || string.IsNullOrEmpty(request.Title) || string.IsNullOrEmpty(request.Content))
+            if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
             {
                 return BadRequest("Invalid document data.");
             }
 
-            var id = await _documentService.CreateDocumentAsync(
-                request.Title, request.Content, request.Language);
+            // Read file content as string (for text files) or store as bytes for binary files
+            string content;
+            using (var reader = new StreamReader(file.OpenReadStream()))
+            {
+                content = await reader.ReadToEndAsync();
+            }
+
+            var id = await _documentService.CreateDocumentAsync(title, content, language);
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
