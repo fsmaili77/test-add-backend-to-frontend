@@ -9,6 +9,6 @@ namespace LegalAnalyzer.Application.Requests
     {
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
-        public string Language { get; set; } = "en";
+        public string Language { get; set; } = "en";        
     }
 }

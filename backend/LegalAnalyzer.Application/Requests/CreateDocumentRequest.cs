@@ -10,6 +10,8 @@ namespace LegalAnalyzer.Application.Requests
         public string Title { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
         public string Language { get; set; } = "en";
+        public string FileType { get; set; } = "text/plain"; // Default file type
+        public long FileSize { get; set; } = 0; // Default file size
     
     }
 }

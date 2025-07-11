@@ -40,7 +40,12 @@ namespace LegalAnalyzer.Api.Controllers
         public async Task<IActionResult> Create([FromBody] CreateDocumentRequest request)
         {
             var id = await _documentService.CreateDocumentAsync(
-                request.Title, request.Content, request.Language);
+                request.Title,
+                request.Content,
+                request.Language,
+                request.FileType,
+                request.FileSize
+                );
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
@@ -70,14 +75,23 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest("Invalid document data.");
             }
 
-            // Read file content as string (for text files) or store as bytes for binary files
             string content;
             using (var reader = new StreamReader(file.OpenReadStream()))
             {
                 content = await reader.ReadToEndAsync();
             }
 
-            var id = await _documentService.CreateDocumentAsync(title, content, language);
+            var fileType = Path.GetExtension(file.FileName).TrimStart('.');
+            var fileSize = file.Length;
+
+            var id = await _documentService.CreateDocumentAsync(
+                title: title,
+                content: content,
+                language: language,
+                fileType: fileType,
+                fileSize: fileSize
+            );
+
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
@@ -94,7 +108,12 @@ namespace LegalAnalyzer.Api.Controllers
             foreach (var request in requests)
             {
                 var id = await _documentService.CreateDocumentAsync(
-                    request.Title, request.Content, request.Language);
+                    request.Title,
+                    request.Content,
+                    request.Language,
+                    request.FileType,
+                    request.FileSize
+                );
                 ids.Add(id);
             }
 

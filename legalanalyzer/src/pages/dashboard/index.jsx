@@ -25,16 +25,34 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
       try {
-        const docs = await getDocuments();
-        setDocuments(docs);
-      } catch (err) {
-        setError('Failed to load documents.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDocs();
+      const docs = await getDocuments();
+      const mappedDocs = docs.map(doc => ({
+        id: doc.id,
+        filename: doc.title || doc.filename || 'Untitled',
+        uploadDate: doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : 'Just now' || doc.createdAt || '',
+        status: doc.status || 'Pending',
+        type: doc.type || doc.fileType || '',
+        size: doc.size ? formatFileSize(doc.size) : '0 bytes',
+        analysisProgress: doc.analysisProgress || 0,
+      }));
+      setDocuments(mappedDocs);
+    } catch (err) {
+      setError('Failed to load documents.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchDocs();
   }, []);
+
+  // Helper function to format file size
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   // Metrics based on fetched documents
   const metrics = useMemo(() => {

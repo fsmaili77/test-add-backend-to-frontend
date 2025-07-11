@@ -28,7 +28,15 @@ namespace LegalAnalyzer.Application.Services
                 Title = d.Title,
                 Content = d.Content,
                 Language = d.Language,
-                UploadedAt = d.UploadedAt
+                UploadedAt = d.UploadedAt,
+                Status = d.Status,
+                Type = d.Type,
+                Size = d.Size,
+                AnalysisResult = d.AnalysisResult,
+                Summary = d.Summary,
+                ErrorMessage = d.ErrorMessage,
+                Tags = d.Tags?.Select(t => new TagDto { Id = t.Id, Name = t.Name }).ToList() ?? new List<TagDto>(),
+                Keywords = d.Keywords?.Select(k => new KeywordDto { Id = k.Id, Value = k.Value }).ToList() ?? new List<KeywordDto>()
             });
         }
 
@@ -43,18 +51,30 @@ namespace LegalAnalyzer.Application.Services
                 Title = doc.Title,
                 Content = doc.Content,
                 Language = doc.Language,
-                UploadedAt = doc.UploadedAt
+                UploadedAt = doc.UploadedAt,
+                Status = doc.Status,
+                Type = doc.Type,
+                Size = doc.Size,
+                AnalysisResult = doc.AnalysisResult,
+                Summary = doc.Summary,
+                ErrorMessage = doc.ErrorMessage,
+                Tags = doc.Tags?.Select(t => new TagDto { Id = t.Id, Name = t.Name }).ToList() ?? new List<TagDto>(),
+                Keywords = doc.Keywords?.Select(k => new KeywordDto { Id = k.Id, Value = k.Value }).ToList() ?? new List<KeywordDto>()
             };
         }
 
-        public async Task<Guid> CreateDocumentAsync(string title, string content, string language)
+        public async Task<Guid> CreateDocumentAsync(string title, string content, string language, string fileType, long fileSize)
         {
             var document = new Document
             {
                 Id = Guid.NewGuid(),
                 Title = title,
                 Content = content,
-                Language = language
+                Language = language,
+                Type = fileType,
+                Size = fileSize,
+                UploadedAt = DateTime.UtcNow,
+                Status = "Pending"
             };
 
             await _documentRepository.AddAsync(document);
@@ -90,7 +110,10 @@ namespace LegalAnalyzer.Application.Services
                 Title = request.Title,
                 Content = request.Content,
                 Language = request.Language ?? "en",
-                UploadedAt = DateTime.UtcNow
+                Type = request.FileType, 
+                Size = request.FileSize, 
+                UploadedAt = DateTime.UtcNow,
+                Status = "Pending"
             };
 
             await _documentRepository.AddAsync(document);
