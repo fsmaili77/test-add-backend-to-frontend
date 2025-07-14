@@ -51,10 +51,9 @@ export const deleteDocument = async (id) => {
     method: "DELETE",
   });
 
-  if (!response.ok) {
-    throw new Error(`Failed to delete document with id ${id}`);
+  if (!response.ok && response.status !== 204) {
+    throw new Error("Failed to delete document");
   }
-  return await response.json();
 };
 
 export const searchDocuments = async (query) => {
@@ -89,5 +88,14 @@ export const getDocumentStatus = async (id) => {
   }
   return await response.json();
 };
+
+//Summary of the document
+export const getDocumentSummary = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/api/document/summary/${id}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch summary for document with id ${id}`);
+  }
+  return await response.json();
+}
 
 

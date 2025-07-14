@@ -6,6 +6,7 @@ import Icon from 'components/AppIcon';
 import RecentActivity from './components/RecentActivity';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { getDocuments } from '../../api';
+import { deleteDocument } from '../../api';
 
 const Dashboard = () => {
   const { texts } = useLanguage();
@@ -53,6 +54,18 @@ const Dashboard = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+  // Handle document deletion
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
+    try {
+      await deleteDocument(id);
+      setDocuments(prev => prev.filter(doc => doc.id !== id));
+    } catch (err) {
+      alert('Failed to delete document.');
+    }
+ };
+
 
   // Metrics based on fetched documents
   const metrics = useMemo(() => {
@@ -287,6 +300,7 @@ const Dashboard = () => {
                                 <button
                                   className="text-error hover:text-red-700 p-1 rounded hover:bg-red-50"
                                   title={texts.deleteDocument}
+                                  onClick={() => handleDelete(document.id)}
                                 >
                                   <Icon name="Trash2" size={16} />
                                 </button>
