@@ -8,26 +8,22 @@ const API_BASE_URL = "https://localhost:5001"; // This is a placeholder URL.
 
 export const uploadDocument = async (file) => {
   const formData = new FormData();
-  //Show an original title and language for the document.
-  // You can modify these values as needed.For example, you might want to get them from the file's metadata.
+  // Show an original title and language for the document.
   if (!file || !(file instanceof File)) {
     throw new Error("Invalid file provided for upload");
   }
-  
-  formData.append("title", file.name.replace(/\.[^/.]+$/, ""));
+  // Use the file's name with extension as the title.
+  formData.append("title", file.name);
   formData.append("language", "en");
   formData.append("file", file);
-
   const response = await fetch(`${API_BASE_URL}/api/document/upload`, {
     method: "POST",
     body: formData,
   });
-
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to upload document: ${response.status} ${errorText}`);
   }
-
   return await response.json();
 };
 
@@ -97,5 +93,3 @@ export const getDocumentSummary = async (id) => {
   }
   return await response.json();
 }
-
-

@@ -3,11 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import GlobalHeader from 'components/ui/GlobalHeader';
 import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
+import { getDocumentById } from '../../api';
 
 
 const DocumentViewer = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const urlParams = new URLSearchParams(location.search);
+  const id = urlParams.get('doc');
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -27,7 +30,7 @@ const DocumentViewer = () => {
   const annotationMenuRef = useRef(null);
 
   // Mock document data
-  const mockDocuments = [
+  /*const mockDocuments = [
     {
       id: 1,
       name: "Commercial Lease Agreement - Downtown Office.pdf",
@@ -88,7 +91,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
         ]
       }
     }
-  ];
+  ]; */
 
   const mockVersionHistory = [
     { version: "1.3", date: "2024-01-15", user: "Sarah Johnson", changes: "Final execution version" },
@@ -119,6 +122,24 @@ Date: January 15, 2024          Date: January 15, 2024`,
   };
 
   useEffect(() => {
+    if (!id) return;
+    const fetchDocuments = async () => {
+      try {
+        const doc = await getDocumentById(id);
+        setSelectedDocument(doc);
+        // Set analysis results from backend if present.
+        
+
+
+        setAnalysisResults(doc.analysisResults || mockAnalysisResults);
+      } catch (error) {
+        navigate('/dashboard');
+      }
+    };
+    fetchDocuments();
+  }, [id, navigate]);
+
+  /*useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const docId = urlParams.get('id') || '1';
     const document = mockDocuments.find(doc => doc.id.toString() === docId);
@@ -129,7 +150,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
     } else {
       navigate('/dashboard');
     }
-  }, [location.search, navigate]);
+  }, [location.search, navigate]); */
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -329,7 +350,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
               </div>
             </div>
 
-            {!sidebarCollapsed && (
+            {!sidebarCollapsed && analysisResults && (
               <div className="p-4 space-y-6 overflow-y-auto h-full">
                 {/* Document Classification */}
                 <div>
@@ -355,7 +376,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Parties</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo.parties.map((party, index) => (
+                    {selectedDocument.extractedInfo?.parties.map((party, index) => (
                       <div key={index} className="p-3 bg-gray-50 rounded-lg">
                         <div className="font-medium text-sm text-text-primary">{party.name}</div>
                         <div className="text-xs text-text-secondary">{party.role} • {party.type}</div>
@@ -371,7 +392,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Key Dates</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo.keyDates.map((date, index) => (
+                    {selectedDocument.extractedInfo?.keyDates.map((date, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div>
                           <div className="font-medium text-sm text-text-primary">{date.description}</div>
@@ -389,7 +410,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Financial Terms</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo.financialTerms.map((term, index) => (
+                    {selectedDocument.extractedInfo?.financialTerms.map((term, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-text-primary">{term.term}</span>
                         <span className="font-medium text-sm text-primary">{term.amount}</span>

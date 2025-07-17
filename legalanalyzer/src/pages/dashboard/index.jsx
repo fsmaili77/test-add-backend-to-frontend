@@ -34,6 +34,8 @@ const Dashboard = () => {
         status: doc.status || 'Pending',
         type: doc.type || doc.fileType || '',
         size: doc.size ? formatFileSize(doc.size) : '0 bytes',
+        // analysisResults: doc.analysisResults || [],
+        analysisResults: doc.analysisResults || [],
         analysisProgress: doc.analysisProgress || 0,
       }));
       setDocuments(mappedDocs);
@@ -285,7 +287,7 @@ const Dashboard = () => {
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end space-x-2">
                                 <Link
-                                  to={`/document-viewer?doc=${encodeURIComponent(document.filename)}`}
+                                  to={`/document-viewer?doc=${encodeURIComponent(document.id)}`}
                                   className="text-primary hover:text-blue-700 p-1 rounded hover:bg-blue-50"
                                   title={texts.viewDocument}
                                 >

@@ -8,6 +8,10 @@ using Microsoft.AspNetCore.Mvc;
 using LegalAnalyzer.Application.Requests;
 using Microsoft.AspNetCore.Http;
 using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+using UglyToad.PdfPig;
+using Xceed.Words.NET; // For DocX
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -54,7 +58,7 @@ namespace LegalAnalyzer.Api.Controllers
         {
             await _documentService.UpdateDocumentAsync(id, request.Title, request.Content, request.Language);
             return NoContent();
-        }
+        }        
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
@@ -63,7 +67,8 @@ namespace LegalAnalyzer.Api.Controllers
             return NoContent();
         }
 
-        // POST /api/documents — Upload a new document
+        // POST /api/documents/upload — Upload a document
+
         [HttpPost("upload")]
         public async Task<IActionResult> UploadDocument(
             [FromForm] string title,
@@ -75,13 +80,39 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest("Invalid document data.");
             }
 
-            string content;
-            using (var reader = new StreamReader(file.OpenReadStream()))
+            string fileType = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+            string content = "";
+
+            var tempFilePath = Path.GetTempFileName();
+            using (var stream = System.IO.File.Create(tempFilePath))
             {
-                content = await reader.ReadToEndAsync();
+                await file.CopyToAsync(stream);
             }
 
-            var fileType = Path.GetExtension(file.FileName).TrimStart('.');
+            try
+            {
+                switch (fileType)
+                {
+                    case "pdf":
+                        content = ExtractTextFromPdf(tempFilePath);
+                        break;
+                    case "docx":
+                        content = ExtractTextFromDocx(tempFilePath);
+                        break;
+                    case "txt":
+                        content = await System.IO.File.ReadAllTextAsync(tempFilePath);
+                        break;
+                    default:
+                        return BadRequest("Unsupported file type.");
+                }
+
+                content = PostProcessExtractedContent(content);
+            }
+            finally
+            {
+                System.IO.File.Delete(tempFilePath);
+            }
+
             var fileSize = file.Length;
 
             var id = await _documentService.CreateDocumentAsync(
@@ -95,30 +126,180 @@ namespace LegalAnalyzer.Api.Controllers
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
-        // POST /api/documents/batch — Upload multiple documents
-        [HttpPost("batch")]
-        public async Task<IActionResult> UploadDocuments([FromBody] List<CreateDocumentRequest> requests)
+        private string ExtractTextFromPdf(string filePath)
         {
-            if (requests == null || !requests.Any())
+            var sb = new StringBuilder();
+            
+            using (var pdf = PdfDocument.Open(filePath))
             {
-                return BadRequest("No documents provided.");
+                foreach (var page in pdf.GetPages())
+                {
+                    var text = page.Text;
+                    
+                    text = Regex.Replace(text, @"(\n\s*)+\n", "\n\n");
+                    text = Regex.Replace(text, @"(?<=\w)\s+(?=[A-Z][a-z])", "\n\n");
+                    
+                    sb.AppendLine(text);
+                    sb.AppendLine();
+                }
+            }
+            
+            return sb.ToString();
+        }
+
+        private string ExtractTextFromDocx(string filePath)
+        {
+            var sb = new StringBuilder();
+            
+            using (var doc = DocX.Load(filePath))
+            {
+                foreach (var paragraph in doc.Paragraphs)
+                {
+                    // Simplified heading detection
+                    if (paragraph.StyleName != null && paragraph.StyleName.ToLower().Contains("heading"))
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine($"## {paragraph.Text.Trim()}");
+                        sb.AppendLine();
+                    }
+                    else if (paragraph.IsListItem)
+                    {
+                        sb.AppendLine($"• {paragraph.Text.Trim()}");
+                    }
+                    else
+                    {
+                        sb.AppendLine(paragraph.Text.Trim());
+                    }
+                }
+                
+                foreach (var table in doc.Tables)
+                {
+                    sb.AppendLine("\n[TABLE START]");
+                    foreach (var row in table.Rows)
+                    {
+                        foreach (var cell in row.Cells)
+                        {
+                            sb.Append(cell.Paragraphs[0].Text + "\t");
+                        }
+                        sb.AppendLine();
+                    }
+                    sb.AppendLine("[TABLE END]\n");
+                }
+            }
+            
+            return sb.ToString();
+        }
+
+        private string PostProcessExtractedContent(string content)
+        {
+            content = Regex.Replace(content, @"(\r\n|\n\r|\n)+", "\n");
+            content = Regex.Replace(content, @"(\d+\.)\s*([A-Z][A-Za-z ]+)", "\n\n$1 $2\n");
+            content = Regex.Replace(content, @"\s+([.,;:!?])", "$1");
+            content = Regex.Replace(content, @"([a-z])\- ([a-z])", "$1$2");
+            content = Regex.Replace(content, @"(?<=\n)\s*•\s*", "• ");
+            content = Regex.Replace(content, @"\n{3,}", "\n\n");
+            
+            return content.Trim();
+        }  
+
+        // POST /api/documents/batch-upload — Upload multiple documents
+        [HttpPost("batch-upload")]
+        public async Task<IActionResult> BatchUploadDocuments(
+            [FromForm] List<IFormFile> files,
+            [FromForm] List<string> titles,
+            [FromForm] List<string> languages)
+        {
+            if (files == null || !files.Any() || titles == null || languages == null ||
+                files.Count != titles.Count || files.Count != languages.Count)
+            {
+                return BadRequest("Files, titles, and languages must be provided and have the same count.");
             }
 
             var ids = new List<Guid>();
-            foreach (var request in requests)
+            var errors = new List<string>();
+
+            for (int i = 0; i < files.Count; i++)
             {
-                var id = await _documentService.CreateDocumentAsync(
-                    request.Title,
-                    request.Content,
-                    request.Language,
-                    request.FileType,
-                    request.FileSize
-                );
-                ids.Add(id);
+                var file = files[i];
+                var title = titles[i];
+                var language = languages[i];
+
+                if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
+                {
+                    errors.Add($"Skipped file {i + 1}: Invalid file or title");
+                    continue;
+                }
+
+                string fileType = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+                string content = "";
+
+                var tempFilePath = Path.GetTempFileName();
+                using (var stream = System.IO.File.Create(tempFilePath))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                try
+                {
+                    switch (fileType)
+                    {
+                        case "pdf":
+                            content = ExtractTextFromPdf(tempFilePath);
+                            break;
+                        case "docx":
+                            content = ExtractTextFromDocx(tempFilePath);
+                            break;
+                        case "txt":
+                            content = await System.IO.File.ReadAllTextAsync(tempFilePath);
+                            break;
+                        default:
+                            errors.Add($"Skipped file {i + 1} ({file.FileName}): Unsupported file type");
+                            continue;
+                    }
+
+                    content = PostProcessExtractedContent(content);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Error processing file {i + 1} ({file.FileName}): {ex.Message}");
+                    continue;
+                }
+                finally
+                {
+                    System.IO.File.Delete(tempFilePath);
+                }
+
+                try
+                {
+                    var fileSize = file.Length;
+                    var id = await _documentService.CreateDocumentAsync(
+                        title: title,
+                        content: content,
+                        language: language,
+                        fileType: fileType,
+                        fileSize: fileSize
+                    );
+                    ids.Add(id);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Error saving document {i + 1} ({title}): {ex.Message}");
+                }
             }
 
-            return CreatedAtAction(nameof(GetAll), new { ids }, ids);
+            var result = new
+            {
+                SuccessCount = ids.Count,
+                ErrorCount = errors.Count,
+                DocumentIds = ids,
+                Errors = errors
+            };
+
+            return ids.Count > 0 
+                ? CreatedAtAction(nameof(GetAll), new { ids }, result)
+                : BadRequest(result);
         }
+
 
         // POST /api/documents/{id}/analyze — Analyze a specific document
         [HttpPost("{id}/analyze")]
