@@ -122,22 +122,29 @@ Date: January 15, 2024          Date: January 15, 2024`,
   };
 
   useEffect(() => {
-    if (!id) return;
-    const fetchDocuments = async () => {
-      try {
-        const doc = await getDocumentById(id);
-        setSelectedDocument(doc);
-        // Set analysis results from backend if present.
-        
-
-
-        setAnalysisResults(doc.analysisResults || mockAnalysisResults);
-      } catch (error) {
-        navigate('/dashboard');
-      }
-    };
-    fetchDocuments();
-  }, [id, navigate]);
+  if (!id) return;
+  const fetchDocuments = async () => {
+    try {
+      const doc = await getDocumentById(id);
+      setSelectedDocument({
+        ...doc,
+        type: doc.type
+          ? doc.type === 'auto'
+            ? 'Auto-detect'
+            : doc.type
+                .split('-')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')
+          : 'Unknown',
+        fileExtension: doc.fileExtension || 'Unknown', // Optional: display file extension
+      });
+      setAnalysisResults(doc.analysisResults || mockAnalysisResults);
+    } catch (error) {
+      navigate('/dashboard');
+    }
+  };
+  fetchDocuments();
+}, [id, navigate]);
 
   /*useEffect(() => {
     const urlParams = new URLSearchParams(location.search);

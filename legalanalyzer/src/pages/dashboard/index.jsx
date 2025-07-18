@@ -22,19 +22,26 @@ const Dashboard = () => {
 
   // Fetch documents from backend on mount
   useEffect(() => {
-    const fetchDocs = async () => {
-      setLoading(true);
-      setError(null);
-      try {
+  const fetchDocs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const docs = await getDocuments();
       const mappedDocs = docs.map(doc => ({
         id: doc.id,
         filename: doc.title || doc.filename || 'Untitled',
-        uploadDate: doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : 'Just now' || doc.createdAt || '',
+        uploadDate: doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : 'Just now',
         status: doc.status || 'Pending',
-        type: doc.type || doc.fileType || '',
+        type: doc.type
+          ? doc.type === 'auto'
+            ? 'Auto-detect'
+            : doc.type
+                .split('-')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')
+          : 'Unknown',
         size: doc.size ? formatFileSize(doc.size) : '0 bytes',
-        // analysisResults: doc.analysisResults || [],
+        fileExtension: doc.fileExtension || 'Unknown', // Optional: display file extension
         analysisResults: doc.analysisResults || [],
         analysisProgress: doc.analysisProgress || 0,
       }));
@@ -46,7 +53,7 @@ const Dashboard = () => {
     }
   };
   fetchDocs();
-  }, []);
+}, []);
 
   // Helper function to format file size
   const formatFileSize = (bytes) => {

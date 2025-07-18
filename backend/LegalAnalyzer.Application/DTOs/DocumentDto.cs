@@ -13,7 +13,8 @@ namespace LegalAnalyzer.Application.DTOs
         public string Language { get; set; } = "en";
         public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
         public string Status { get; set; } = "Pending"; // e.g., Pending, Analyzed, Error
-        public string? Type { get; set; } // For document type
+        public string? Type { get; set; } // Classification type: auto, contract, brief, regulation, case-law, other
+        public string? FileExtension { get; set; } // File type: pdf, docx, txt
         public long? Size { get; set; } // For file size in bytes
         public int? AnalysisProgress { get; set; } // If you need progress tracking        
         public TimeSpan? AnalysisDuration { get; set; } // Duration of the analysis process

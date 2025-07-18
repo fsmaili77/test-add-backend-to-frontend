@@ -11,7 +11,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
-using Xceed.Words.NET; // For DocX
+using Xceed.Words.NET;
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -47,9 +47,10 @@ namespace LegalAnalyzer.Api.Controllers
                 request.Title,
                 request.Content,
                 request.Language,
-                request.FileType,
-                request.FileSize
-                );
+                request.FileType, // This will now be the classification type
+                request.FileSize,
+                request.FileExtension // Add FileExtension to the request
+            );
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
@@ -67,12 +68,11 @@ namespace LegalAnalyzer.Api.Controllers
             return NoContent();
         }
 
-        // POST /api/documents/upload — Upload a document
-
         [HttpPost("upload")]
         public async Task<IActionResult> UploadDocument(
             [FromForm] string title,
             [FromForm] string language,
+            [FromForm] string classification, // New parameter for classification
             [FromForm] IFormFile file)
         {
             if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
@@ -80,7 +80,14 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest("Invalid document data.");
             }
 
-            string fileType = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+            // Validate classification
+            var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case-law", "other" };
+            if (!validClassifications.Contains(classification.ToLower()))
+            {
+                return BadRequest("Invalid classification type.");
+            }
+
+            string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
             string content = "";
 
             var tempFilePath = Path.GetTempFileName();
@@ -91,7 +98,7 @@ namespace LegalAnalyzer.Api.Controllers
 
             try
             {
-                switch (fileType)
+                switch (fileExtension)
                 {
                     case "pdf":
                         content = ExtractTextFromPdf(tempFilePath);
@@ -115,17 +122,127 @@ namespace LegalAnalyzer.Api.Controllers
 
             var fileSize = file.Length;
 
+            // Use classification as Type and fileExtension as FileExtension
             var id = await _documentService.CreateDocumentAsync(
                 title: title,
                 content: content,
                 language: language,
-                fileType: fileType,
-                fileSize: fileSize
+                fileType: classification.ToLower(), // Store classification in Type
+                fileSize: fileSize,
+                fileExtension: fileExtension // Store file extension
             );
 
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
 
+        [HttpPost("batch-upload")]
+        public async Task<IActionResult> BatchUploadDocuments(
+            [FromForm] List<IFormFile> files,
+            [FromForm] List<string> titles,
+            [FromForm] List<string> languages,
+            [FromForm] List<string> classifications) // New parameter for classifications
+        {
+            if (files == null || !files.Any() || titles == null || languages == null || classifications == null ||
+                files.Count != titles.Count || files.Count != languages.Count || files.Count != classifications.Count)
+            {
+                return BadRequest("Files, titles, languages, and classifications must be provided and have the same count.");
+            }
+
+            var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case-law", "other" };
+            var ids = new List<Guid>();
+            var errors = new List<string>();
+
+            for (int i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                var title = titles[i];
+                var language = languages[i];
+                var classification = classifications[i];
+
+                if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
+                {
+                    errors.Add($"Skipped file {i + 1}: Invalid file or title");
+                    continue;
+                }
+
+                if (!validClassifications.Contains(classification.ToLower()))
+                {
+                    errors.Add($"Skipped file {i + 1} ({file.FileName}): Invalid classification type");
+                    continue;
+                }
+
+                string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
+                string content = "";
+
+                var tempFilePath = Path.GetTempFileName();
+                using (var stream = System.IO.File.Create(tempFilePath))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                try
+                {
+                    switch (fileExtension)
+                    {
+                        case "pdf":
+                            content = ExtractTextFromPdf(tempFilePath);
+                            break;
+                        case "docx":
+                            content = ExtractTextFromDocx(tempFilePath);
+                            break;
+                        case "txt":
+                            content = await System.IO.File.ReadAllTextAsync(tempFilePath);
+                            break;
+                        default:
+                            errors.Add($"Skipped file {i + 1} ({file.FileName}): Unsupported file type");
+                            continue;
+                    }
+
+                    content = PostProcessExtractedContent(content);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Error processing file {i + 1} ({file.FileName}): {ex.Message}");
+                    continue;
+                }
+                finally
+                {
+                    System.IO.File.Delete(tempFilePath);
+                }
+
+                try
+                {
+                    var fileSize = file.Length;
+                    var id = await _documentService.CreateDocumentAsync(
+                        title: title,
+                        content: content,
+                        language: language,
+                        fileType: classification.ToLower(), // Store classification in Type
+                        fileSize: fileSize,
+                        fileExtension: fileExtension // Store file extension
+                    );
+                    ids.Add(id);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Error saving document {i + 1} ({title}): {ex.Message}");
+                }
+            }
+
+            var result = new
+            {
+                SuccessCount = ids.Count,
+                ErrorCount = errors.Count,
+                DocumentIds = ids,
+                Errors = errors
+            };
+
+            return ids.Count > 0 
+                ? CreatedAtAction(nameof(GetAll), new { ids }, result)
+                : BadRequest(result);
+        }
+
+        // Existing text extraction methods remain unchanged
         private string ExtractTextFromPdf(string filePath)
         {
             var sb = new StringBuilder();
@@ -155,7 +272,6 @@ namespace LegalAnalyzer.Api.Controllers
             {
                 foreach (var paragraph in doc.Paragraphs)
                 {
-                    // Simplified heading detection
                     if (paragraph.StyleName != null && paragraph.StyleName.ToLower().Contains("heading"))
                     {
                         sb.AppendLine();
@@ -200,108 +316,8 @@ namespace LegalAnalyzer.Api.Controllers
             content = Regex.Replace(content, @"\n{3,}", "\n\n");
             
             return content.Trim();
-        }  
-
-        // POST /api/documents/batch-upload — Upload multiple documents
-        [HttpPost("batch-upload")]
-        public async Task<IActionResult> BatchUploadDocuments(
-            [FromForm] List<IFormFile> files,
-            [FromForm] List<string> titles,
-            [FromForm] List<string> languages)
-        {
-            if (files == null || !files.Any() || titles == null || languages == null ||
-                files.Count != titles.Count || files.Count != languages.Count)
-            {
-                return BadRequest("Files, titles, and languages must be provided and have the same count.");
-            }
-
-            var ids = new List<Guid>();
-            var errors = new List<string>();
-
-            for (int i = 0; i < files.Count; i++)
-            {
-                var file = files[i];
-                var title = titles[i];
-                var language = languages[i];
-
-                if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
-                {
-                    errors.Add($"Skipped file {i + 1}: Invalid file or title");
-                    continue;
-                }
-
-                string fileType = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
-                string content = "";
-
-                var tempFilePath = Path.GetTempFileName();
-                using (var stream = System.IO.File.Create(tempFilePath))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
-                try
-                {
-                    switch (fileType)
-                    {
-                        case "pdf":
-                            content = ExtractTextFromPdf(tempFilePath);
-                            break;
-                        case "docx":
-                            content = ExtractTextFromDocx(tempFilePath);
-                            break;
-                        case "txt":
-                            content = await System.IO.File.ReadAllTextAsync(tempFilePath);
-                            break;
-                        default:
-                            errors.Add($"Skipped file {i + 1} ({file.FileName}): Unsupported file type");
-                            continue;
-                    }
-
-                    content = PostProcessExtractedContent(content);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error processing file {i + 1} ({file.FileName}): {ex.Message}");
-                    continue;
-                }
-                finally
-                {
-                    System.IO.File.Delete(tempFilePath);
-                }
-
-                try
-                {
-                    var fileSize = file.Length;
-                    var id = await _documentService.CreateDocumentAsync(
-                        title: title,
-                        content: content,
-                        language: language,
-                        fileType: fileType,
-                        fileSize: fileSize
-                    );
-                    ids.Add(id);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error saving document {i + 1} ({title}): {ex.Message}");
-                }
-            }
-
-            var result = new
-            {
-                SuccessCount = ids.Count,
-                ErrorCount = errors.Count,
-                DocumentIds = ids,
-                Errors = errors
-            };
-
-            return ids.Count > 0 
-                ? CreatedAtAction(nameof(GetAll), new { ids }, result)
-                : BadRequest(result);
         }
 
-
-        // POST /api/documents/{id}/analyze — Analyze a specific document
         [HttpPost("{id}/analyze")]
         public async Task<IActionResult> AnalyzeDocumentById(Guid id)
         {
@@ -319,14 +335,14 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest(ex.Message);
             }
         }
-        // POST /api/documents/analyze — Analyze all documents
+
         [HttpPost("analyze")]
         public async Task<IActionResult> AnalyzeAllDocuments()
         {
             var analysisResults = await _documentService.AnalyzeAllDocumentsAsync();
             return Ok(analysisResults);
         }
-        // POST /api/documents/{id}/summarize — Summarize a specific document
+
         [HttpPost("{id}/summarize")]
         public async Task<IActionResult> SummarizeDocumentById(Guid id)
         {
@@ -344,7 +360,5 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest(ex.Message);
             }
         }
-
     }
-
 }

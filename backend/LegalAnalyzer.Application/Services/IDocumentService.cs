@@ -13,7 +13,7 @@ namespace LegalAnalyzer.Application.Services
     {
         Task<IEnumerable<DocumentDto>> GetAllDocumentsAsync();
         Task<DocumentDto?> GetDocumentByIdAsync(Guid id);
-        Task<Guid> CreateDocumentAsync(string title, string content, string language, string fileType, long fileSize);
+        Task<Guid> CreateDocumentAsync(string title, string content, string language, string fileType, long fileSize, string fileExtension);
         Task UpdateDocumentAsync(Guid id, string title, string content, string language);
         Task DeleteDocumentAsync(Guid id);
         Task UploadDocumentAsync(CreateDocumentRequest request);

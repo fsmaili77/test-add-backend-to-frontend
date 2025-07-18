@@ -100,45 +100,66 @@ const DocumentUpload = () => {
   };
 
   const startUpload = async () => {
-    if (selectedFiles.length === 0) return;
+  if (selectedFiles.length === 0) return;
 
-    setIsUploading(true);
-    setErrors([]);
+  setIsUploading(true);
+  setErrors([]);
 
-    try {
-      // Update all files to uploading status
-      setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
+  try {
+    setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
 
-      // Upload each file to the backend
-    await Promise.all(
-      selectedFiles.map(async (file) => {
-        try {
-          await uploadDocument(file.file); // <-- Use the native File object
-          setUploadProgress(prev => ({ ...prev, [file.id]: 100 }));
-          setSelectedFiles(prev =>
-            prev.map(f => f.id === file.id ? { ...f, status: 'completed' } : f)
-          );
-        } catch (error) {
-          setErrors(prev => [...prev, `Failed to upload ${file.name}: ${error.message}`]);
-          setSelectedFiles(prev =>
-            prev.map(f => f.id === file.id ? { ...f, status: 'error' } : f)
-          );
-        }
-      })
-    );
+    if (selectedFiles.length === 1) {
+      // Single file upload
+      try {
+        await uploadDocument(
+          selectedFiles[0].file,
+          selectedFiles[0].name, // Use file name as title
+          uploadSettings.language || 'en',
+          uploadSettings.classification // From UploadSettings.jsx
+        );
+        setUploadProgress(prev => ({ ...prev, [selectedFiles[0].id]: 100 }));
+        setSelectedFiles(prev =>
+          prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'completed' } : f)
+        );
+      } catch (error) {
+        setErrors(prev => [...prev, `Failed to upload ${selectedFiles[0].name}: ${error.message}`]);
+        setSelectedFiles(prev =>
+          prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'error' } : f)
+        );
+      }
+    } else {
+      // Batch upload
+      const files = selectedFiles.map(f => f.file);
+      const titles = selectedFiles.map(f => f.name);
+      const languages = selectedFiles.map(f => uploadSettings.language || 'en');
+      const classifications = selectedFiles.map(f => uploadSettings.classification);
 
-      // Navigate to analysis dashboard after successful upload
-      setTimeout(() => {
-        navigate('/analysis-dashboard');
-      }, 1000);
-
-    } catch (error) {
-      setErrors(['Upload failed. Please try again.']);
-      setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
-    } finally {
-      setIsUploading(false);
+      try {
+        await batchUploadDocuments(files, titles, languages, classifications);
+        setUploadProgress(prev => {
+          const updatedProgress = { ...prev };
+          selectedFiles.forEach(f => {
+            updatedProgress[f.id] = 100;
+          });
+          return updatedProgress;
+        });
+        setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'completed' })));
+      } catch (error) {
+        setErrors(prev => [...prev, `Batch upload failed: ${error.message}`]);
+        setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+      }
     }
-  };
+
+    setTimeout(() => {
+      navigate('/analysis-dashboard');
+    }, 1000);
+  } catch (error) {
+    setErrors(['Upload failed. Please try again.']);
+    setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+  } finally {
+    setIsUploading(false);
+  }
+};
 
   const getEstimatedTime = () => {
     const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
