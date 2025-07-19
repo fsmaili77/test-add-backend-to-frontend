@@ -8,6 +8,7 @@ import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
 import { uploadDocument } from '../../api' // Assuming this is the API function to handle document uploads';
+import { batchUploadDocuments } from '../../api'; // Assuming this is the API function for batch uploads
 
 const DocumentUpload = () => {
   const navigate = useNavigate();
