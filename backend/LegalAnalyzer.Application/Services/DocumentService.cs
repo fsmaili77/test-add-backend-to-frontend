@@ -6,6 +6,7 @@ using LegalAnalyzer.Application.DTOs;
 using LegalAnalyzer.Domain.Entities;
 using LegalAnalyzer.Domain.Repositories;
 using LegalAnalyzer.Application.Requests;
+using System.Text.RegularExpressions;
 
 
 namespace LegalAnalyzer.Application.Services
@@ -246,19 +247,73 @@ namespace LegalAnalyzer.Application.Services
 
         private async Task<string> AutoDetectClassification(string content)
         {
-            // Simple keyword-based classification (replace with NLP/ML model for better accuracy)
-            if (string.IsNullOrEmpty(content)) return "other";
+            if (string.IsNullOrWhiteSpace(content)) return "other";
 
-            content = content.ToLower();
-            if (content.Contains("agreement") || content.Contains("contract"))
-                return "contract";
-            if (content.Contains("brief") || content.Contains("motion"))
-                return "brief";
-            if (content.Contains("regulation") || content.Contains("statute"))
-                return "regulation";
-            if (content.Contains("case law") || content.Contains("precedent"))
-                return "case-law";
-            return "other";
+            content = content.ToLowerInvariant();
+
+            // Define regex patterns for each document type
+            var patterns = new Dictionary<string, string[]>
+            {
+                ["contract"] = new[]
+                {
+                    @"\bthis\s+agreement\b",
+                    @"\bparty\s+of\s+the\s+first\s+part\b",
+                    @"\bterms\s+and\s+conditions\b",
+                    @"\bforce\s+majeure\b",
+                    @"\bindemnification\b",
+                    @"\btermination\s+clause\b",
+                    @"\bgoverning\s+law\b"
+                },
+                ["brief"] = new[]
+                {
+                    @"\bplaintiff\b", 
+                    @"\bdefendant\b",
+                    @"\bstatement\s+of\s+facts\b",
+                    @"\blegal\s+argument\b",
+                    @"\bmemorandum\s+of\s+law\b",
+                    @"\bmotion\s+to\s+(dismiss|suppress|compel)\b",
+                    @"\bbrief\s+in\s+(support|opposition)\b"
+                },
+                ["regulation"] = new[]
+                {
+                    @"\bpursuant\s+to\s+(article|section)\s+\d+",
+                    @"\bin\s+accordance\s+with\s+(the\s+)?law\s+no\.?\s*\d+",
+                    @"\bministerial\s+order\b",
+                    @"\bstatutory\s+provision\b",
+                    @"\badministrative\s+code\b",
+                    @"\bdecree\s+no\.?\s*\d+"
+                },
+                ["case-law"] = new[]
+                {
+                    @"\bcase\s+no\.?\s*\d{1,5}(-\d{1,5})?\b",
+                    @"\b[0-9]+\s+f\.\s?[\d]+d\s+[0-9]+\b", // US federal reporter
+                    @"\bdecision\s+rendered\s+by\s+the\s+court\b",
+                    @"\bholding\b",
+                    @"\bdissenting\s+opinion\b",
+                    @"\bprecedent\b",
+                    @"\bjudgment\s+dated\s+\d{1,2}/\d{1,2}/\d{2,4}\b"
+                }
+            };
+
+            // Count matches per category
+            var scores = new Dictionary<string, int>();
+
+            foreach (var category in patterns.Keys)
+            {
+                int score = 0;
+                foreach (var pattern in patterns[category])
+                {
+                    var matches = Regex.Matches(content, pattern, RegexOptions.IgnoreCase);
+                    score += matches.Count;
+                }
+                scores[category] = score;
+            }
+
+            // Get category with highest score
+            var bestMatch = scores.OrderByDescending(kvp => kvp.Value).First();
+
+            // If no matches found, return "other"
+            return bestMatch.Value > 0 ? bestMatch.Key : "other";
         }
     }
 }

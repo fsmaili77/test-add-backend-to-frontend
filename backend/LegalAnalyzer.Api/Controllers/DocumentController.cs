@@ -10,8 +10,13 @@ using Microsoft.AspNetCore.Http;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using UglyToad.PdfPig;
+//using UglyToad.PdfPig;
+using PdfPigPdfDocument = UglyToad.PdfPig.PdfDocument;
+using PdfiumPdfDocument = PdfiumViewer.PdfDocument;
 using Xceed.Words.NET;
+using Tesseract;
+//using PdfiumViewer;
+using System.Drawing; // For Bitmap
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -102,6 +107,11 @@ namespace LegalAnalyzer.Api.Controllers
                 {
                     case "pdf":
                         content = ExtractTextFromPdf(tempFilePath);
+                        if (string.IsNullOrWhiteSpace(content))
+                        {
+                            // Fallback to OCR for scanned PDFs
+                            content = ExtractTextFromPdfWithOcr(tempFilePath);
+                        }
                         break;
                     case "docx":
                         content = ExtractTextFromDocx(tempFilePath);
@@ -117,6 +127,9 @@ namespace LegalAnalyzer.Api.Controllers
             }
             finally
             {
+                // Ensure all objects are disposed before deleting the temporary file
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
                 System.IO.File.Delete(tempFilePath);
             }
 
@@ -186,6 +199,11 @@ namespace LegalAnalyzer.Api.Controllers
                     {
                         case "pdf":
                             content = ExtractTextFromPdf(tempFilePath);
+                            if (string.IsNullOrWhiteSpace(content))
+                            {
+                                // Fallback to OCR for scanned PDFs
+                                content = ExtractTextFromPdfWithOcr(tempFilePath);
+                            }
                             break;
                         case "docx":
                             content = ExtractTextFromDocx(tempFilePath);
@@ -247,7 +265,7 @@ namespace LegalAnalyzer.Api.Controllers
         {
             var sb = new StringBuilder();
             
-            using (var pdf = PdfDocument.Open(filePath))
+            using (var pdf = PdfPigPdfDocument.Open(filePath))
             {
                 foreach (var page in pdf.GetPages())
                 {
@@ -263,11 +281,50 @@ namespace LegalAnalyzer.Api.Controllers
             
             return sb.ToString();
         }
+        
+        private string ExtractTextFromPdfWithOcr(string pdfPath)
+        {
+            var textBuilder = new StringBuilder();
+
+            using (var pdfDocument = PdfiumPdfDocument.Load(pdfPath))
+            {
+                int pageCount = pdfDocument.PageCount;
+                for (int i = 0; i < pageCount; i++)
+                {
+                    using (var image = pdfDocument.Render(i, 200, 200, true)) // 200 DPI, grayscale
+                    {
+                        using (var bitmap = (Bitmap)image) // cast to Bitmap
+                        using (var engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default))
+                        using (var pix = BitmapToPix(bitmap))
+                        using (var result = engine.Process(pix))
+                        {
+                            var ocrText = result.GetText();
+                            if (!string.IsNullOrWhiteSpace(ocrText))
+                            {
+                                textBuilder.AppendLine(ocrText);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return textBuilder.ToString();
+        }
+
+        private Pix BitmapToPix(Bitmap bitmap)
+        {
+            using (var stream = new MemoryStream())
+            {
+                bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                stream.Position = 0;
+                return Pix.LoadFromMemory(stream.ToArray());
+            }
+        }
 
         private string ExtractTextFromDocx(string filePath)
         {
             var sb = new StringBuilder();
-            
+
             using (var doc = DocX.Load(filePath))
             {
                 foreach (var paragraph in doc.Paragraphs)
@@ -287,7 +344,7 @@ namespace LegalAnalyzer.Api.Controllers
                         sb.AppendLine(paragraph.Text.Trim());
                     }
                 }
-                
+
                 foreach (var table in doc.Tables)
                 {
                     sb.AppendLine("\n[TABLE START]");
@@ -302,7 +359,7 @@ namespace LegalAnalyzer.Api.Controllers
                     sb.AppendLine("[TABLE END]\n");
                 }
             }
-            
+
             return sb.ToString();
         }
 
