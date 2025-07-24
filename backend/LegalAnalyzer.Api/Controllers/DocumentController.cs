@@ -272,7 +272,7 @@ namespace LegalAnalyzer.Api.Controllers
             {
                 foreach (var paragraph in doc.Paragraphs)
                 {
-                    if (paragraph.StyleName != null && paragraph.StyleName.ToLower().Contains("heading"))
+                    if (paragraph.StyleId != null && paragraph.StyleId.ToLower().Contains("heading"))
                     {
                         sb.AppendLine();
                         sb.AppendLine($"## {paragraph.Text.Trim()}");
