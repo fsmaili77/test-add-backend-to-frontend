@@ -11,7 +11,11 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using UglyToad.PdfPig;
-using Xceed.Words.NET;
+using System.Net.Http;
+using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -20,10 +24,15 @@ namespace LegalAnalyzer.Api.Controllers
     public class DocumentController : ControllerBase
     {
         private readonly IDocumentService _documentService;
+        private readonly ILogger<DocumentController> _logger;
+        private readonly HttpClient _httpClient;
 
-        public DocumentController(IDocumentService documentService)
+        public DocumentController(IDocumentService documentService, ILogger<DocumentController> logger, HttpClient httpClient)
         {
             _documentService = documentService;
+            _logger = logger;
+            _httpClient = httpClient;
+            _httpClient.BaseAddress = new Uri("http://localhost:8000/"); // Update for production
         }
 
         [HttpGet]
@@ -47,9 +56,9 @@ namespace LegalAnalyzer.Api.Controllers
                 request.Title,
                 request.Content,
                 request.Language,
-                request.FileType, // This will now be the classification type
+                request.FileType,
                 request.FileSize,
-                request.FileExtension // Add FileExtension to the request
+                request.FileExtension
             );
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
         }
@@ -59,7 +68,7 @@ namespace LegalAnalyzer.Api.Controllers
         {
             await _documentService.UpdateDocumentAsync(id, request.Title, request.Content, request.Language);
             return NoContent();
-        }        
+        }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(Guid id)
@@ -72,7 +81,8 @@ namespace LegalAnalyzer.Api.Controllers
         public async Task<IActionResult> UploadDocument(
             [FromForm] string title,
             [FromForm] string language,
-            [FromForm] string classification, // New parameter for classification
+            [FromForm] string classification,
+            [FromForm] bool enableOCR,
             [FromForm] IFormFile file)
         {
             if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
@@ -80,7 +90,6 @@ namespace LegalAnalyzer.Api.Controllers
                 return BadRequest("Invalid document data.");
             }
 
-            // Validate classification
             var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case-law", "other" };
             if (!validClassifications.Contains(classification.ToLower()))
             {
@@ -90,18 +99,19 @@ namespace LegalAnalyzer.Api.Controllers
             string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
             string content = "";
 
-            var tempFilePath = Path.GetTempFileName();
-            using (var stream = System.IO.File.Create(tempFilePath))
-            {
-                await file.CopyToAsync(stream);
-            }
-
+            // Create temporary file with .pdf extension for PDF files
+            string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
             try
             {
+                using (var stream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
                 switch (fileExtension)
                 {
                     case "pdf":
-                        content = ExtractTextFromPdf(tempFilePath);
+                        content = enableOCR ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName) : ExtractTextFromPdf(tempFilePath);
                         break;
                     case "docx":
                         content = ExtractTextFromDocx(tempFilePath);
@@ -117,19 +127,21 @@ namespace LegalAnalyzer.Api.Controllers
             }
             finally
             {
-                System.IO.File.Delete(tempFilePath);
+                if (System.IO.File.Exists(tempFilePath))
+                {
+                    System.IO.File.Delete(tempFilePath);
+                }
             }
 
             var fileSize = file.Length;
 
-            // Use classification as Type and fileExtension as FileExtension
             var id = await _documentService.CreateDocumentAsync(
                 title: title,
                 content: content,
                 language: language,
-                fileType: classification.ToLower(), // Store classification in Type
+                fileType: classification.ToLower(),
                 fileSize: fileSize,
-                fileExtension: fileExtension // Store file extension
+                fileExtension: fileExtension
             );
 
             return CreatedAtAction(nameof(GetById), new { id }, new { id });
@@ -140,7 +152,8 @@ namespace LegalAnalyzer.Api.Controllers
             [FromForm] List<IFormFile> files,
             [FromForm] List<string> titles,
             [FromForm] List<string> languages,
-            [FromForm] List<string> classifications) // New parameter for classifications
+            [FromForm] List<string> classifications,
+            [FromForm] bool enableOCR)
         {
             if (files == null || !files.Any() || titles == null || languages == null || classifications == null ||
                 files.Count != titles.Count || files.Count != languages.Count || files.Count != classifications.Count)
@@ -174,18 +187,19 @@ namespace LegalAnalyzer.Api.Controllers
                 string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
                 string content = "";
 
-                var tempFilePath = Path.GetTempFileName();
-                using (var stream = System.IO.File.Create(tempFilePath))
-                {
-                    await file.CopyToAsync(stream);
-                }
-
+                // Create temporary file with proper extension
+                string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
                 try
                 {
+                    using (var stream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+
                     switch (fileExtension)
                     {
                         case "pdf":
-                            content = ExtractTextFromPdf(tempFilePath);
+                            content = enableOCR ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName) : ExtractTextFromPdf(tempFilePath);
                             break;
                         case "docx":
                             content = ExtractTextFromDocx(tempFilePath);
@@ -207,7 +221,10 @@ namespace LegalAnalyzer.Api.Controllers
                 }
                 finally
                 {
-                    System.IO.File.Delete(tempFilePath);
+                    if (System.IO.File.Exists(tempFilePath))
+                    {
+                        System.IO.File.Delete(tempFilePath);
+                    }
                 }
 
                 try
@@ -217,9 +234,9 @@ namespace LegalAnalyzer.Api.Controllers
                         title: title,
                         content: content,
                         language: language,
-                        fileType: classification.ToLower(), // Store classification in Type
+                        fileType: classification.ToLower(),
                         fileSize: fileSize,
-                        fileExtension: fileExtension // Store file extension
+                        fileExtension: fileExtension
                     );
                     ids.Add(id);
                 }
@@ -242,68 +259,111 @@ namespace LegalAnalyzer.Api.Controllers
                 : BadRequest(result);
         }
 
-        // Existing text extraction methods remain unchanged
         private string ExtractTextFromPdf(string filePath)
         {
             var sb = new StringBuilder();
-            
-            using (var pdf = PdfDocument.Open(filePath))
+            using (var pdf = UglyToad.PdfPig.PdfDocument.Open(filePath))
             {
                 foreach (var page in pdf.GetPages())
                 {
                     var text = page.Text;
-                    
                     text = Regex.Replace(text, @"(\n\s*)+\n", "\n\n");
                     text = Regex.Replace(text, @"(?<=\w)\s+(?=[A-Z][a-z])", "\n\n");
-                    
                     sb.AppendLine(text);
                     sb.AppendLine();
                 }
             }
-            
-            return sb.ToString();
+            return sb.ToString().Trim();
+        }
+
+        private async Task<string> ExtractTextFromPdfWithOCR(string filePath, string originalFileName)
+        {
+            try
+            {
+                _logger.LogInformation("Starting OCR for {FilePath}", filePath);
+
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                using (var content = new MultipartFormDataContent())
+                {
+                    // Use original file name to ensure .pdf extension
+                    content.Add(new StreamContent(stream), "file", originalFileName);
+                    var response = await _httpClient.PostAsync("extract-text", content);
+                    response.EnsureSuccessStatusCode();
+                    var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                    _logger.LogInformation("Completed OCR for {FilePath}", filePath);
+                    return result?["text"] ?? "[OCR Error: No text returned]";
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "OCR service request failed for {FilePath}", filePath);
+                return $"OCR Error: Service request failed - {ex.Message}";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "OCR failed for {FilePath}", filePath);
+                return $"OCR Error: {ex.Message}";
+            }
         }
 
         private string ExtractTextFromDocx(string filePath)
         {
-            var sb = new StringBuilder();
-            
-            using (var doc = DocX.Load(filePath))
+            try
             {
-                foreach (var paragraph in doc.Paragraphs)
+                _logger.LogInformation("Extracting text from DOCX: {FilePath}", filePath);
+                var sb = new StringBuilder();
+                using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(filePath, false))
                 {
-                    if (paragraph.StyleId != null && paragraph.StyleId.ToLower().Contains("heading"))
+                    var body = doc.MainDocumentPart.Document.Body;
+                    foreach (var element in body.Elements())
                     {
-                        sb.AppendLine();
-                        sb.AppendLine($"## {paragraph.Text.Trim()}");
-                        sb.AppendLine();
-                    }
-                    else if (paragraph.IsListItem)
-                    {
-                        sb.AppendLine($"• {paragraph.Text.Trim()}");
-                    }
-                    else
-                    {
-                        sb.AppendLine(paragraph.Text.Trim());
-                    }
-                }
-                
-                foreach (var table in doc.Tables)
-                {
-                    sb.AppendLine("\n[TABLE START]");
-                    foreach (var row in table.Rows)
-                    {
-                        foreach (var cell in row.Cells)
+                        if (element is DocumentFormat.OpenXml.Wordprocessing.Paragraph paragraph)
                         {
-                            sb.Append(cell.Paragraphs[0].Text + "\t");
+                            var style = paragraph.ParagraphProperties?.ParagraphStyleId?.Val?.Value;
+                            var text = paragraph.InnerText.Trim();
+                            if (!string.IsNullOrWhiteSpace(text))
+                            {
+                                if (style != null && style.ToLower().Contains("heading"))
+                                {
+                                    sb.AppendLine();
+                                    sb.AppendLine($"## {text}");
+                                    sb.AppendLine();
+                                }
+                                else
+                                {
+                                    sb.AppendLine(text);
+                                }
+                            }
                         }
-                        sb.AppendLine();
+                        else if (element is DocumentFormat.OpenXml.Wordprocessing.Table table)
+                        {
+                            sb.AppendLine("\n[TABLE START]");
+                            foreach (var row in table.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>())
+                            {
+                                foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
+                                {
+                                    var cellText = string.Join(" ", cell.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>().Select(t => t.Text));
+                                    sb.Append(cellText + "\t");
+                                }
+                                sb.AppendLine();
+                            }
+                            sb.AppendLine("[TABLE END]\n");
+                        }
                     }
-                    sb.AppendLine("[TABLE END]\n");
                 }
+                var result = sb.ToString().Trim();
+                if (string.IsNullOrWhiteSpace(result))
+                {
+                    _logger.LogWarning("No text extracted from DOCX: {FilePath}", filePath);
+                    return "[DOCX Error: No text extracted]";
+                }
+                return result;
             }
-            
-            return sb.ToString();
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to extract text from DOCX: {FilePath}", filePath);
+                return $"DOCX Error: {ex.Message}";
+            }
         }
 
         private string PostProcessExtractedContent(string content)
@@ -314,7 +374,6 @@ namespace LegalAnalyzer.Api.Controllers
             content = Regex.Replace(content, @"([a-z])\- ([a-z])", "$1$2");
             content = Regex.Replace(content, @"(?<=\n)\s*•\s*", "• ");
             content = Regex.Replace(content, @"\n{3,}", "\n\n");
-            
             return content.Trim();
         }
 

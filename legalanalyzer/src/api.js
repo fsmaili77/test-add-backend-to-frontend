@@ -6,7 +6,7 @@
  */
 const API_BASE_URL = "https://localhost:5001"; // This is a placeholder URL.
 
-export const uploadDocument = async (file, title, language, classification) => {
+export const uploadDocument = async (file, title, language, classification, enableOCR) => {
   if (!file || !(file instanceof File)) {
     throw new Error("Invalid file provided for upload");
   }
@@ -23,7 +23,8 @@ export const uploadDocument = async (file, title, language, classification) => {
   const formData = new FormData();
   formData.append("title", title);
   formData.append("language", language);
-  formData.append("classification", classification.toLowerCase()); // Add classification
+  formData.append("classification", classification.toLowerCase());
+  formData.append("enableOCR", enableOCR.toString()); // Add enableOCR
   formData.append("file", file);
 
   const response = await fetch(`${API_BASE_URL}/api/document/upload`, {
@@ -39,7 +40,7 @@ export const uploadDocument = async (file, title, language, classification) => {
   return await response.json();
 };
 
-export const batchUploadDocuments = async (files, titles, languages, classifications) => {
+export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR) => {
   if (!files || !Array.isArray(files) || files.length === 0 || files.some(f => !(f instanceof File))) {
     throw new Error("Invalid files provided for batch upload");
   }
@@ -58,8 +59,9 @@ export const batchUploadDocuments = async (files, titles, languages, classificat
     formData.append("files", file);
     formData.append("titles", titles[index]);
     formData.append("languages", languages[index]);
-    formData.append("classifications", classifications[index].toLowerCase()); // Add classifications
+    formData.append("classifications", classifications[index].toLowerCase());
   });
+  formData.append("enableOCR", enableOCR.toString()); // Add enableOCR
 
   const response = await fetch(`${API_BASE_URL}/api/document/batch-upload`, {
     method: "POST",

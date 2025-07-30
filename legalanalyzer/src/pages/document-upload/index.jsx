@@ -7,8 +7,8 @@ import FileDropZone from './components/FileDropZone';
 import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
-import { uploadDocument } from '../../api' // Assuming this is the API function to handle document uploads';
-import { batchUploadDocuments } from '../../api'; // Assuming this is the API function for batch uploads
+import { uploadDocument } from '../../api';
+import { batchUploadDocuments } from '../../api';
 
 const DocumentUpload = () => {
   const navigate = useNavigate();
@@ -57,7 +57,7 @@ const DocumentUpload = () => {
       if (fileValidationErrors.length === 0) {
         const fileWithId = {
           id: Date.now() + Math.random(),
-          file,
+          file: file,
           name: file.name,
           size: file.size,
           type: file.type,
@@ -88,7 +88,9 @@ const DocumentUpload = () => {
       const interval = setInterval(() => {
         progress += Math.random() * 15;
         if (progress >= 100) {
-          progress = 100;
+          progress用戶
+
+System: 100;
           clearInterval(interval);
           resolve();
         }
@@ -101,70 +103,72 @@ const DocumentUpload = () => {
   };
 
   const startUpload = async () => {
-  if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0) return;
 
-  setIsUploading(true);
-  setErrors([]);
+    setIsUploading(true);
+    setErrors([]);
 
-  try {
-    setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
+    try {
+      setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
 
-    if (selectedFiles.length === 1) {
-      // Single file upload
-      try {
-        await uploadDocument(
-          selectedFiles[0].file,
-          selectedFiles[0].name, // Use file name as title
-          uploadSettings.language || 'en',
-          uploadSettings.classification // From UploadSettings.jsx
-        );
-        setUploadProgress(prev => ({ ...prev, [selectedFiles[0].id]: 100 }));
-        setSelectedFiles(prev =>
-          prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'completed' } : f)
-        );
-      } catch (error) {
-        setErrors(prev => [...prev, `Failed to upload ${selectedFiles[0].name}: ${error.message}`]);
-        setSelectedFiles(prev =>
-          prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'error' } : f)
-        );
-      }
-    } else {
-      // Batch upload
-      const files = selectedFiles.map(f => f.file);
-      const titles = selectedFiles.map(f => f.name);
-      const languages = selectedFiles.map(f => uploadSettings.language || 'en');
-      const classifications = selectedFiles.map(f => uploadSettings.classification);
+      if (selectedFiles.length === 1) {
+        // Single file upload
+        try {
+          await uploadDocument(
+            selectedFiles[0].file,
+            selectedFiles[0].name,
+            uploadSettings.language || 'en',
+            uploadSettings.classification,
+            uploadSettings.enableOCR // Pass enableOCR
+          );
+          setUploadProgress(prev => ({ ...prev, [selectedFiles[0].id]: 100 }));
+          setSelectedFiles(prev =>
+            prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'completed' } : f)
+          );
+        } catch (error) {
+          setErrors(prev => [...prev, `Failed to upload ${selectedFiles[0].name}: ${error.message}`]);
+          setSelectedFiles(prev =>
+            prev.map(f => f.id === selectedFiles[0].id ? { ...f, status: 'error' } : f)
+          );
+        }
+      } else {
+        // Batch upload
+        const files = selectedFiles.map(f => f.file);
+        const titles = selectedFiles.map(f => f.name);
+        const languages = selectedFiles.map(f => uploadSettings.language || 'en');
+        const classifications = selectedFiles.map(f => uploadSettings.classification);
+        const enableOCR = uploadSettings.enableOCR; // Pass enableOCR
 
-      try {
-        await batchUploadDocuments(files, titles, languages, classifications);
-        setUploadProgress(prev => {
-          const updatedProgress = { ...prev };
-          selectedFiles.forEach(f => {
-            updatedProgress[f.id] = 100;
+        try {
+          await batchUploadDocuments(files, titles, languages, classifications, enableOCR);
+          setUploadProgress(prev => {
+            const updatedProgress = { ...prev };
+            selectedFiles.forEach(f => {
+              updatedProgress[f.id] = 100;
+            });
+            return updatedProgress;
           });
-          return updatedProgress;
-        });
-        setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'completed' })));
-      } catch (error) {
-        setErrors(prev => [...prev, `Batch upload failed: ${error.message}`]);
-        setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+          setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'completed' })));
+        } catch (error) {
+          setErrors(prev => [...prev, `Batch upload failed: ${error.message}`]);
+          setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+        }
       }
-    }
 
-    setTimeout(() => {
-      navigate('/analysis-dashboard');
-    }, 1000);
-  } catch (error) {
-    setErrors(['Upload failed. Please try again.']);
-    setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
-  } finally {
-    setIsUploading(false);
-  }
-};
+      setTimeout(() => {
+        navigate('/analysis-dashboard');
+      }, 1000);
+    } catch (error) {
+      setErrors(['Upload failed. Please try again.']);
+      setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const getEstimatedTime = () => {
     const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
-    const estimatedSeconds = Math.ceil(totalSize / (1024 * 1024) * 2); // 2 seconds per MB
+    const estimatedSeconds = Math.ceil(totalSize / (1024 * 1024) * 2);
     return estimatedSeconds > 60 ? `${Math.ceil(estimatedSeconds / 60)} min` : `${estimatedSeconds} sec`;
   };
 

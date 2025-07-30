@@ -13,11 +13,18 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using LegalAnalyzer.Domain.Entities;
+using Microsoft.Extensions.Logging;
+using LegalAnalyzer.Api.Controllers;
+using System.Threading;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+ThreadPool.SetMinThreads(100, 100);
 builder.Services.AddControllers();
+builder.Services.AddHttpClient<DocumentController>();
+builder.Services.AddLogging(logging => logging
+    .AddConsole()) ; 
 
 // Add CORS policy
 builder.Services.AddCors(options =>
