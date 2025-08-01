@@ -16,6 +16,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using System.Collections.ObjectModel;
 
 namespace LegalAnalyzer.Api.Controllers
 {

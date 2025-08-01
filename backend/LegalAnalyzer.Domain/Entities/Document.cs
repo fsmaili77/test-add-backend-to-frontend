@@ -41,4 +41,43 @@ namespace LegalAnalyzer.Domain.Entities
         public Guid DocumentId { get; set; }
         public Document Document { get; set; } = null!;
     }
+
+    public class ExtractedInfo
+     {
+            public List<Party> Parties { get; set; } = new List<Party>();
+            public List<KeyDate> KeyDates { get; set; } = new List<KeyDate>();
+            public List<FinancialTerm> FinancialTerms { get; set; } = new List<FinancialTerm>();
+            public RiskAssessment? RiskAssessment { get; set; }
+        }
+
+    public class Party
+        {
+            public string Name { get; set; } = string.Empty;
+            public string Role { get; set; } = string.Empty;
+            public string Type { get; set; } = string.Empty;
+        }
+
+    public class KeyDate
+        {
+            public string Date { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+        }
+
+    public class FinancialTerm
+        {
+            public string Term { get; set; } = string.Empty;
+            public string Amount { get; set; } = string.Empty;
+        }
+
+    public class RiskAssessment
+        {
+            public string Overall { get; set; } = string.Empty;
+            public List<RiskFactor> Factors { get; set; } = new List<RiskFactor>();
+        }
+
+    public class RiskFactor
+        {
+            public string Risk { get; set; } = string.Empty;
+            public string Factor { get; set; } = string.Empty;
+        }
 }
