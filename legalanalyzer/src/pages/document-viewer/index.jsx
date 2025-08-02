@@ -5,7 +5,6 @@ import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
 import { getDocumentById } from '../../api';
 
-
 const DocumentViewer = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -25,73 +24,8 @@ const DocumentViewer = () => {
   const [activeAnnotationTool, setActiveAnnotationTool] = useState(null);
   const [comparisonMode, setComparisonMode] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [analysisResults, setAnalysisResults] = useState(null);
   const viewerRef = useRef(null);
   const annotationMenuRef = useRef(null);
-
-  // Mock document data
-  /*const mockDocuments = [
-    {
-      id: 1,
-      name: "Commercial Lease Agreement - Downtown Office.pdf",
-      type: "Contract",
-      size: "2.4 MB",
-      pages: 12,
-      uploadDate: "2024-01-15",
-      status: "Analyzed",
-      content: `COMMERCIAL LEASE AGREEMENT
-
-This Commercial Lease Agreement ("Agreement") is entered into on January 15, 2024, between DOWNTOWN PROPERTIES LLC, a Delaware limited liability company ("Landlord"), and TECH INNOVATIONS INC., a California corporation ("Tenant").
-
-PREMISES: The leased premises consist of approximately 5,000 square feet of office space located at 123 Business Plaza, Suite 400, San Francisco, CA 94105 ("Premises").
-
-TERM: The initial term of this lease shall be for a period of five (5) years, commencing on February 1, 2024, and ending on January 31, 2029, unless sooner terminated in accordance with the provisions hereof.
-
-RENT: Tenant shall pay to Landlord base rent in the amount of Twenty-Five Thousand Dollars ($25,000) per month, payable in advance on the first day of each calendar month during the term hereof.
-
-SECURITY DEPOSIT: Upon execution of this Agreement, Tenant shall deposit with Landlord the sum of Fifty Thousand Dollars ($50,000) as security for the faithful performance of Tenant's obligations hereunder.
-
-USE: The Premises shall be used solely for general office purposes and for no other purpose without the prior written consent of Landlord.
-
-MAINTENANCE AND REPAIRS: Tenant shall maintain the Premises in good condition and repair, reasonable wear and tear excepted. Landlord shall be responsible for structural repairs and maintenance of common areas.
-
-INSURANCE: Tenant shall maintain comprehensive general liability insurance with minimum coverage of Two Million Dollars ($2,000,000) per occurrence and shall name Landlord as an additional insured.
-
-DEFAULT: If Tenant fails to pay rent when due or otherwise defaults under this Agreement, Landlord may terminate this lease and pursue all available remedies at law or in equity.
-
-GOVERNING LAW: This Agreement shall be governed by and construed in accordance with the laws of the State of California.
-
-IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
-
-DOWNTOWN PROPERTIES LLC          TECH INNOVATIONS INC.
-
-By: _________________________    By: _________________________
-Name: Sarah Johnson              Name: Michael Chen
-Title: Managing Member           Title: Chief Executive Officer
-Date: January 15, 2024          Date: January 15, 2024`,
-      extractedInfo: {
-        parties: [
-          { name: "Downtown Properties LLC", role: "Landlord", type: "Delaware LLC" },
-          { name: "Tech Innovations Inc.", role: "Tenant", type: "California Corporation" }
-        ],
-        keyDates: [
-          { date: "2024-01-15", description: "Agreement Date" },
-          { date: "2024-02-01", description: "Lease Commencement" },
-          { date: "2029-01-31", description: "Lease Expiration" }
-        ],
-        financialTerms: [
-          { term: "Monthly Rent", amount: "$25,000" },
-          { term: "Security Deposit", amount: "$50,000" },
-          { term: "Insurance Coverage", amount: "$2,000,000" }
-        ],
-        clauses: [
-          { type: "Use Restriction", content: "General office purposes only" },
-          { type: "Maintenance", content: "Tenant responsible for premises maintenance" },
-          { type: "Governing Law", content: "California State Law" }
-        ]
-      }
-    }
-  ]; */
 
   const mockVersionHistory = [
     { version: "1.3", date: "2024-01-15", user: "Sarah Johnson", changes: "Final execution version" },
@@ -100,64 +34,29 @@ Date: January 15, 2024          Date: January 15, 2024`,
     { version: "1.0", date: "2024-01-08", user: "Sarah Johnson", changes: "Initial draft" }
   ];
 
-  const mockAnalysisResults = {
-    classification: {
-      type: "Commercial Lease Agreement",
-      confidence: 0.95,
-      subtype: "Office Lease"
-    },
-    riskAssessment: {
-      overall: "Medium",
-      factors: [
-        { risk: "High", factor: "Long-term commitment (5 years)" },
-        { risk: "Medium", factor: "Security deposit amount" },
-        { risk: "Low", factor: "Standard use restrictions" }
-      ]
-    },
-    suggestedTags: [
-      { tag: "Commercial Real Estate", confidence: 0.98 },
-      { tag: "Office Lease", confidence: 0.96 },
-      { tag: "California Law", confidence: 0.92 }
-    ]
-  };
-
   useEffect(() => {
-  if (!id) return;
-  const fetchDocuments = async () => {
-    try {
-      const doc = await getDocumentById(id);
-      setSelectedDocument({
-        ...doc,
-        type: doc.type
-          ? doc.type === 'auto'
-            ? 'Auto-detect'
-            : doc.type
-                .split('-')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ')
-          : 'Unknown',
-        fileExtension: doc.fileExtension || 'Unknown', // Optional: display file extension
-      });
-      setAnalysisResults(doc.analysisResults || mockAnalysisResults);
-    } catch (error) {
-      navigate('/dashboard');
-    }
-  };
-  fetchDocuments();
-}, [id, navigate]);
-
-  /*useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const docId = urlParams.get('id') || '1';
-    const document = mockDocuments.find(doc => doc.id.toString() === docId);
-    
-    if (document) {
-      setSelectedDocument(document);
-      setAnalysisResults(mockAnalysisResults);
-    } else {
-      navigate('/dashboard');
-    }
-  }, [location.search, navigate]); */
+    if (!id) return;
+    const fetchDocuments = async () => {
+      try {
+        const doc = await getDocumentById(id);
+        setSelectedDocument({
+          ...doc,
+          type: doc.type
+            ? doc.type === 'auto'
+              ? 'Auto-detect'
+              : doc.type
+                  .split('-')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ')
+            : 'Unknown',
+          fileExtension: doc.fileExtension || 'Unknown',
+        });
+      } catch (error) {
+        navigate('/dashboard');
+      }
+    };
+    fetchDocuments();
+  }, [id, navigate]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -241,7 +140,6 @@ Date: January 15, 2024          Date: January 15, 2024`,
   };
 
   const exportDocument = (format) => {
-    // Mock export functionality
     console.log(`Exporting document as ${format}`);
   };
 
@@ -271,10 +169,10 @@ Date: January 15, 2024          Date: January 15, 2024`,
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <h1 className="text-2xl font-heading font-semibold text-text-primary">
-                {selectedDocument.name}
+                {selectedDocument.title}
               </h1>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                selectedDocument.status === 'Analyzed' ?'bg-success/10 text-success' :'bg-warning/10 text-warning'
+                selectedDocument.status === 'Analyzed' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
               }`}>
                 {selectedDocument.status}
               </span>
@@ -321,7 +219,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                 onClick={() => setComparisonMode(!comparisonMode)}
                 className={`px-4 py-2 rounded-lg border transition-colors ${
                   comparisonMode 
-                    ? 'bg-primary text-white border-primary' :'bg-surface border-border-light hover:bg-gray-50'
+                    ? 'bg-primary text-white border-primary' : 'bg-surface border-border-light hover:bg-gray-50'
                 }`}
               >
                 <Icon name="GitCompare" size={16} />
@@ -357,7 +255,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
               </div>
             </div>
 
-            {!sidebarCollapsed && analysisResults && (
+            {!sidebarCollapsed && selectedDocument?.extractedInfo && (
               <div className="p-4 space-y-6 overflow-y-auto h-full">
                 {/* Document Classification */}
                 <div>
@@ -368,10 +266,10 @@ Date: January 15, 2024          Date: January 15, 2024`,
                   <div className="space-y-2">
                     <div className="p-3 bg-primary/5 rounded-lg">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-sm">{analysisResults.classification.type}</span>
-                        <span className="text-xs text-success">{Math.round(analysisResults.classification.confidence * 100)}%</span>
+                        <span className="font-medium text-sm">{selectedDocument.type}</span>
+                        <span className="text-xs text-success">95%</span>
                       </div>
-                      <p className="text-xs text-text-secondary">{analysisResults.classification.subtype}</p>
+                      <p className="text-xs text-text-secondary">{selectedDocument.type}</p>
                     </div>
                   </div>
                 </div>
@@ -383,7 +281,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Parties</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo?.parties.map((party, index) => (
+                    {selectedDocument.extractedInfo.parties?.map((party, index) => (
                       <div key={index} className="p-3 bg-gray-50 rounded-lg">
                         <div className="font-medium text-sm text-text-primary">{party.name}</div>
                         <div className="text-xs text-text-secondary">{party.role} • {party.type}</div>
@@ -399,7 +297,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Key Dates</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo?.keyDates.map((date, index) => (
+                    {selectedDocument.extractedInfo.keyDates?.map((date, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div>
                           <div className="font-medium text-sm text-text-primary">{date.description}</div>
@@ -417,7 +315,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <span>Financial Terms</span>
                   </h3>
                   <div className="space-y-2">
-                    {selectedDocument.extractedInfo?.financialTerms.map((term, index) => (
+                    {selectedDocument.extractedInfo.financialTerms?.map((term, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <span className="text-sm text-text-primary">{term.term}</span>
                         <span className="font-medium text-sm text-primary">{term.amount}</span>
@@ -437,18 +335,18 @@ Date: January 15, 2024          Date: January 15, 2024`,
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">Overall Risk</span>
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          analysisResults.riskAssessment.overall === 'High' ? 'bg-error/10 text-error' :
-                          analysisResults.riskAssessment.overall === 'Medium'? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
+                          selectedDocument.extractedInfo.riskAssessment?.overall === 'High' ? 'bg-error/10 text-error' :
+                          selectedDocument.extractedInfo.riskAssessment?.overall === 'Medium' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
                         }`}>
-                          {analysisResults.riskAssessment.overall}
+                          {selectedDocument.extractedInfo.riskAssessment?.overall || 'Unknown'}
                         </span>
                       </div>
                       <div className="space-y-1">
-                        {analysisResults.riskAssessment.factors.map((factor, index) => (
+                        {selectedDocument.extractedInfo.riskAssessment?.factors?.map((factor, index) => (
                           <div key={index} className="flex items-start space-x-2 text-xs">
                             <span className={`px-1 rounded font-medium ${
                               factor.risk === 'High' ? 'bg-error/20 text-error' :
-                              factor.risk === 'Medium'? 'bg-warning/20 text-warning' : 'bg-success/20 text-success'
+                              factor.risk === 'Medium' ? 'bg-warning/20 text-warning' : 'bg-success/20 text-success'
                             }`}>
                               {factor.risk}
                             </span>
@@ -534,7 +432,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <button
                       onClick={() => setActiveAnnotationTool('highlight')}
                       className={`p-2 rounded-lg transition-colors ${
-                        activeAnnotationTool === 'highlight' ?'bg-yellow-100 text-yellow-700' :'hover:bg-gray-100'
+                        activeAnnotationTool === 'highlight' ? 'bg-yellow-100 text-yellow-700' : 'hover:bg-gray-100'
                       }`}
                       title="Highlight"
                     >
@@ -543,7 +441,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <button
                       onClick={() => setActiveAnnotationTool('comment')}
                       className={`p-2 rounded-lg transition-colors ${
-                        activeAnnotationTool === 'comment' ?'bg-blue-100 text-blue-700' :'hover:bg-gray-100'
+                        activeAnnotationTool === 'comment' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
                       }`}
                       title="Comment"
                     >
@@ -552,7 +450,7 @@ Date: January 15, 2024          Date: January 15, 2024`,
                     <button
                       onClick={() => setActiveAnnotationTool('tag')}
                       className={`p-2 rounded-lg transition-colors ${
-                        activeAnnotationTool === 'tag' ?'bg-green-100 text-green-700' :'hover:bg-gray-100'
+                        activeAnnotationTool === 'tag' ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'
                       }`}
                       title="Tag"
                     >
@@ -598,10 +496,10 @@ Date: January 15, 2024          Date: January 15, 2024`,
                       <Icon name="ChevronLeft" size={16} />
                     </button>
                     <span className="text-sm text-text-secondary">
-                      Page {currentPage} of {selectedDocument.pages}
+                      Page {currentPage} of {selectedDocument.pages || 1}
                     </span>
                     <button
-                      onClick={() => setCurrentPage(Math.min(selectedDocument.pages, currentPage + 1))}
+                      onClick={() => setCurrentPage(Math.min(selectedDocument.pages || 1, currentPage + 1))}
                       disabled={currentPage === selectedDocument.pages}
                       className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
                     >

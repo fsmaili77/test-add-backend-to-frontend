@@ -32,7 +32,7 @@ namespace LegalAnalyzer.Api.Controllers
             _documentService = documentService;
             _logger = logger;
             _httpClient = httpClient;
-            _httpClient.BaseAddress = new Uri("http://localhost:8000/"); // Update for production
+            _httpClient.BaseAddress = new Uri("http://localhost:8000/");
         }
 
         [HttpGet]
@@ -99,7 +99,6 @@ namespace LegalAnalyzer.Api.Controllers
             string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
             string content = "";
 
-            // Create temporary file with .pdf extension for PDF files
             string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
             try
             {
@@ -187,7 +186,6 @@ namespace LegalAnalyzer.Api.Controllers
                 string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
                 string content = "";
 
-                // Create temporary file with proper extension
                 string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
                 try
                 {
@@ -285,7 +283,6 @@ namespace LegalAnalyzer.Api.Controllers
                 using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
                 using (var content = new MultipartFormDataContent())
                 {
-                    // Use original file name to ensure .pdf extension
                     content.Add(new StreamContent(stream), "file", originalFileName);
                     var response = await _httpClient.PostAsync("extract-text", content);
                     response.EnsureSuccessStatusCode();
