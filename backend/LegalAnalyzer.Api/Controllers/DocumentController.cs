@@ -60,7 +60,8 @@ namespace LegalAnalyzer.Api.Controllers
                 request.FileSize,
                 request.FileExtension
             );
-            return CreatedAtAction(nameof(GetById), new { id }, new { id });
+            var doc = await _documentService.GetDocumentByIdAsync(id);
+            return CreatedAtAction(nameof(GetById), new { id }, doc);
         }
 
         [HttpPut("{id}")]
@@ -143,7 +144,8 @@ namespace LegalAnalyzer.Api.Controllers
                 fileExtension: fileExtension
             );
 
-            return CreatedAtAction(nameof(GetById), new { id }, new { id });
+            var doc = await _documentService.GetDocumentByIdAsync(id);
+            return CreatedAtAction(nameof(GetById), new { id }, doc);
         }
 
         [HttpPost("batch-upload")]
