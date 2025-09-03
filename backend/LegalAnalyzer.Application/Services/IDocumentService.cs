@@ -19,8 +19,8 @@ namespace LegalAnalyzer.Application.Services
         Task UploadDocumentAsync(CreateDocumentRequest request);
         Task<DocumentDto> AnalyzeDocumentAsync(Guid id);
         Task<DocumentDto> SummarizeDocumentAsync(Guid id);
-        //Analyze all documents
         Task<IEnumerable<DocumentDto>> AnalyzeAllDocumentsAsync();
+        Task<DocumentDto> AnalyzeDocumentWithFallbackAsync(Guid id, bool useAdvancedAnalysis = true);
 
-}
+   }
 }

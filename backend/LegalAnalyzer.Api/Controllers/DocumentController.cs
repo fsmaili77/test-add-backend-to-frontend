@@ -16,6 +16,9 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using System.Text.Json;
+using LegalAnalyzer.Application.Models;
+
 
 namespace LegalAnalyzer.Api.Controllers
 {
@@ -25,14 +28,19 @@ namespace LegalAnalyzer.Api.Controllers
     {
         private readonly IDocumentService _documentService;
         private readonly ILogger<DocumentController> _logger;
-        private readonly HttpClient _httpClient;
+        private readonly HttpClient _ocrClient;
+        private readonly ILegalAnalysisService _legalAnalysisService;
 
-        public DocumentController(IDocumentService documentService, ILogger<DocumentController> logger, HttpClient httpClient)
+        public DocumentController(
+            IDocumentService documentService, 
+            ILogger<DocumentController> logger,
+            IHttpClientFactory httpClientFactory,
+            ILegalAnalysisService legalAnalysisService)
         {
             _documentService = documentService;
             _logger = logger;
-            _httpClient = httpClient;
-            _httpClient.BaseAddress = new Uri("http://localhost:8000/");
+            _ocrClient = httpClientFactory.CreateClient("OcrService");
+            _legalAnalysisService = legalAnalysisService;
         }
 
         [HttpGet]
@@ -84,34 +92,32 @@ namespace LegalAnalyzer.Api.Controllers
             [FromForm] string language,
             [FromForm] string classification,
             [FromForm] bool enableOCR,
-            [FromForm] IFormFile file)
+            [FromForm] IFormFile file,
+            [FromForm] string enableAdvancedAnalysis = "true")
         {
             if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
-            {
                 return BadRequest("Invalid document data.");
-            }
 
-            var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case-law", "other" };
+            var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case_law", "other" };
             if (!validClassifications.Contains(classification.ToLower()))
-            {
                 return BadRequest("Invalid classification type.");
-            }
 
             string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
             string content = "";
-
             string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
+
             try
             {
                 using (var stream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write))
-                {
                     await file.CopyToAsync(stream);
-                }
 
+                // OCR or direct extraction
                 switch (fileExtension)
                 {
                     case "pdf":
-                        content = enableOCR ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName) : ExtractTextFromPdf(tempFilePath);
+                        content = enableOCR
+                            ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName)
+                            : ExtractTextFromPdf(tempFilePath);
                         break;
                     case "docx":
                         content = ExtractTextFromDocx(tempFilePath);
@@ -128,13 +134,10 @@ namespace LegalAnalyzer.Api.Controllers
             finally
             {
                 if (System.IO.File.Exists(tempFilePath))
-                {
                     System.IO.File.Delete(tempFilePath);
-                }
             }
 
             var fileSize = file.Length;
-
             var id = await _documentService.CreateDocumentAsync(
                 title: title,
                 content: content,
@@ -144,9 +147,37 @@ namespace LegalAnalyzer.Api.Controllers
                 fileExtension: fileExtension
             );
 
+            // Convert string to bool (default: true)
+            bool advancedAnalysis = true;
+            if (!string.IsNullOrEmpty(enableAdvancedAnalysis))
+            {
+                if (!bool.TryParse(enableAdvancedAnalysis, out advancedAnalysis))
+                    advancedAnalysis = true;
+            }
+
+            _logger.LogInformation("Advanced analysis flag: {EnableAdvancedAnalysis}", advancedAnalysis);
+
+            if (advancedAnalysis)
+            {
+                try
+                {
+                    await _legalAnalysisService.AnalyzeDocumentWithMicroserviceAsync(id, file);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Advanced analysis failed, falling back to basic analysis");
+                    await _documentService.AnalyzeDocumentAsync(id);
+                }
+            }
+            else
+            {
+                await _documentService.AnalyzeDocumentAsync(id);
+            }
+
             var doc = await _documentService.GetDocumentByIdAsync(id);
             return CreatedAtAction(nameof(GetById), new { id }, doc);
         }
+        
 
         [HttpPost("batch-upload")]
         public async Task<IActionResult> BatchUploadDocuments(
@@ -154,17 +185,30 @@ namespace LegalAnalyzer.Api.Controllers
             [FromForm] List<string> titles,
             [FromForm] List<string> languages,
             [FromForm] List<string> classifications,
-            [FromForm] bool enableOCR)
+            [FromForm] bool enableOCR,
+            [FromForm] string enableAdvancedAnalysis = "true")
         {
-            if (files == null || !files.Any() || titles == null || languages == null || classifications == null ||
-                files.Count != titles.Count || files.Count != languages.Count || files.Count != classifications.Count)
+            if (files == null || files.Count == 0)
+                return BadRequest("No files provided.");
+
+            if (titles == null || titles.Count != files.Count)
+                return BadRequest("Titles count does not match files count.");
+
+            if (languages == null || languages.Count != files.Count)
+                return BadRequest("Languages count does not match files count.");
+
+            if (classifications == null || classifications.Count != files.Count)
+                return BadRequest("Classifications count does not match files count.");
+
+            // Convert string to bool (default: true)
+            bool advancedAnalysis = true;
+            if (!string.IsNullOrEmpty(enableAdvancedAnalysis))
             {
-                return BadRequest("Files, titles, languages, and classifications must be provided and have the same count.");
+                if (!bool.TryParse(enableAdvancedAnalysis, out advancedAnalysis))
+                    advancedAnalysis = true;
             }
 
-            var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case-law", "other" };
-            var ids = new List<Guid>();
-            var errors = new List<string>();
+            var processedDocuments = new List<object>();
 
             for (int i = 0; i < files.Count; i++)
             {
@@ -174,32 +218,28 @@ namespace LegalAnalyzer.Api.Controllers
                 var classification = classifications[i];
 
                 if (file == null || file.Length == 0 || string.IsNullOrEmpty(title))
-                {
-                    errors.Add($"Skipped file {i + 1}: Invalid file or title");
                     continue;
-                }
 
+                var validClassifications = new[] { "auto", "contract", "brief", "regulation", "case_law", "other" };
                 if (!validClassifications.Contains(classification.ToLower()))
-                {
-                    errors.Add($"Skipped file {i + 1} ({file.FileName}): Invalid classification type");
                     continue;
-                }
 
                 string fileExtension = Path.GetExtension(file.FileName).TrimStart('.').ToLowerInvariant();
                 string content = "";
-
                 string tempFilePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.{fileExtension}");
+
                 try
                 {
                     using (var stream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write))
-                    {
                         await file.CopyToAsync(stream);
-                    }
 
+                    // OCR or direct extraction
                     switch (fileExtension)
                     {
                         case "pdf":
-                            content = enableOCR ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName) : ExtractTextFromPdf(tempFilePath);
+                            content = enableOCR
+                                ? await ExtractTextFromPdfWithOCR(tempFilePath, file.FileName)
+                                : ExtractTextFromPdf(tempFilePath);
                             break;
                         case "docx":
                             content = ExtractTextFromDocx(tempFilePath);
@@ -208,55 +248,51 @@ namespace LegalAnalyzer.Api.Controllers
                             content = await System.IO.File.ReadAllTextAsync(tempFilePath);
                             break;
                         default:
-                            errors.Add($"Skipped file {i + 1} ({file.FileName}): Unsupported file type");
                             continue;
                     }
 
                     content = PostProcessExtractedContent(content);
                 }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error processing file {i + 1} ({file.FileName}): {ex.Message}");
-                    continue;
-                }
                 finally
                 {
                     if (System.IO.File.Exists(tempFilePath))
-                    {
                         System.IO.File.Delete(tempFilePath);
+                }
+
+                var fileSize = file.Length;
+                var id = await _documentService.CreateDocumentAsync(
+                    title: title,
+                    content: content,
+                    language: language,
+                    fileType: classification.ToLower(),
+                    fileSize: fileSize,
+                    fileExtension: fileExtension
+                );
+
+                _logger.LogInformation("Advanced analysis flag (batch): {EnableAdvancedAnalysis}", advancedAnalysis);
+
+                if (advancedAnalysis)
+                {
+                    try
+                    {
+                        await _legalAnalysisService.AnalyzeDocumentWithMicroserviceAsync(id, file);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Advanced analysis failed for {Title}, falling back to basic analysis", title);
+                        await _documentService.AnalyzeDocumentAsync(id);
                     }
                 }
+                else
+                {
+                    await _documentService.AnalyzeDocumentAsync(id);
+                }
 
-                try
-                {
-                    var fileSize = file.Length;
-                    var id = await _documentService.CreateDocumentAsync(
-                        title: title,
-                        content: content,
-                        language: language,
-                        fileType: classification.ToLower(),
-                        fileSize: fileSize,
-                        fileExtension: fileExtension
-                    );
-                    ids.Add(id);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Error saving document {i + 1} ({title}): {ex.Message}");
-                }
+                var doc = await _documentService.GetDocumentByIdAsync(id);
+                processedDocuments.Add(doc);
             }
 
-            var result = new
-            {
-                SuccessCount = ids.Count,
-                ErrorCount = errors.Count,
-                DocumentIds = ids,
-                Errors = errors
-            };
-
-            return ids.Count > 0 
-                ? CreatedAtAction(nameof(GetAll), new { ids }, result)
-                : BadRequest(result);
+            return Ok(processedDocuments);
         }
 
         private string ExtractTextFromPdf(string filePath)
@@ -281,26 +317,19 @@ namespace LegalAnalyzer.Api.Controllers
             try
             {
                 _logger.LogInformation("Starting OCR for {FilePath}", filePath);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+                using var content = new MultipartFormDataContent();
+                content.Add(new StreamContent(stream), "file", originalFileName);
 
-                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
-                using (var content = new MultipartFormDataContent())
-                {
-                    content.Add(new StreamContent(stream), "file", originalFileName);
-                    var response = await _httpClient.PostAsync("extract-text", content);
-                    response.EnsureSuccessStatusCode();
-                    var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-                    _logger.LogInformation("Completed OCR for {FilePath}", filePath);
-                    return result?["text"] ?? "[OCR Error: No text returned]";
-                }
+                var response = await _ocrClient.PostAsync("extract-text", content);
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+                return result?["text"] ?? "[OCR Error: No text returned]";
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(ex, "OCR service request failed for {FilePath}", filePath);
-                return $"OCR Error: Service request failed - {ex.Message}";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "OCR failed for {FilePath}", filePath);
+                _logger.LogError(ex, "OCR service request failed");
                 return $"OCR Error: {ex.Message}";
             }
         }
@@ -311,6 +340,7 @@ namespace LegalAnalyzer.Api.Controllers
             {
                 _logger.LogInformation("Extracting text from DOCX: {FilePath}", filePath);
                 var sb = new StringBuilder();
+
                 using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(filePath, false))
                 {
                     var body = doc.MainDocumentPart.Document.Body;
@@ -341,7 +371,8 @@ namespace LegalAnalyzer.Api.Controllers
                             {
                                 foreach (var cell in row.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>())
                                 {
-                                    var cellText = string.Join(" ", cell.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>().Select(t => t.Text));
+                                    var cellText = string.Join(" ",
+                                        cell.Descendants<DocumentFormat.OpenXml.Wordprocessing.Text>().Select(t => t.Text));
                                     sb.Append(cellText + "\t");
                                 }
                                 sb.AppendLine();
@@ -350,6 +381,7 @@ namespace LegalAnalyzer.Api.Controllers
                         }
                     }
                 }
+
                 var result = sb.ToString().Trim();
                 if (string.IsNullOrWhiteSpace(result))
                 {
@@ -377,11 +409,23 @@ namespace LegalAnalyzer.Api.Controllers
         }
 
         [HttpPost("{id}/analyze")]
-        public async Task<IActionResult> AnalyzeDocumentById(Guid id)
+        public async Task<IActionResult> AnalyzeDocumentById(Guid id, [FromQuery] bool useAdvancedAnalysis = false)
         {
             try
             {
-                var analysisResult = await _documentService.AnalyzeDocumentAsync(id);
+                DocumentDto analysisResult;
+                
+                if (useAdvancedAnalysis)
+                {
+                    // Use microservice for analysis
+                    analysisResult = await _legalAnalysisService.AnalyzeDocumentByIdAsync(id);
+                }
+                else
+                {
+                    // Use basic analysis
+                    analysisResult = await _documentService.AnalyzeDocumentAsync(id);
+                }
+
                 return Ok(analysisResult);
             }
             catch (KeyNotFoundException)
@@ -395,9 +439,19 @@ namespace LegalAnalyzer.Api.Controllers
         }
 
         [HttpPost("analyze")]
-        public async Task<IActionResult> AnalyzeAllDocuments()
+        public async Task<IActionResult> AnalyzeAllDocuments([FromQuery] bool useAdvancedAnalysis = false)
         {
-            var analysisResults = await _documentService.AnalyzeAllDocumentsAsync();
+            IEnumerable<DocumentDto> analysisResults;
+            
+            if (useAdvancedAnalysis)
+            {
+                analysisResults = await _legalAnalysisService.AnalyzeAllDocumentsAsync();
+            }
+            else
+            {
+                analysisResults = await _documentService.AnalyzeAllDocumentsAsync();
+            }
+
             return Ok(analysisResults);
         }
 

@@ -1,3 +1,4 @@
+// legalanalyzer/src/pages/document-upload/index.jsx - Updated with advanced analysis
 import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import GlobalHeader from 'components/ui/GlobalHeader';
@@ -7,8 +8,7 @@ import FileDropZone from './components/FileDropZone';
 import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
-import { uploadDocument } from '../../api';
-import { batchUploadDocuments } from '../../api';
+import { uploadDocument, batchUploadDocuments } from '../../api';
 
 const DocumentUpload = () => {
   const navigate = useNavigate();
@@ -17,13 +17,13 @@ const DocumentUpload = () => {
     classification: 'auto',
     customTags: '',
     enableOCR: true,
+    enableAdvancedAnalysis: true, // New setting for microservice analysis
     extractMetadata: true,
     processInBackground: false
   });
   const [uploadProgress, setUploadProgress] = useState({});
   const [isUploading, setIsUploading] = useState(false);
   const [errors, setErrors] = useState([]);
-
   const supportedFormats = ['PDF', 'DOC', 'DOCX', 'TXT'];
   const maxFileSize = 50 * 1024 * 1024; // 50MB
   const maxFiles = 20;
@@ -88,9 +88,7 @@ const DocumentUpload = () => {
       const interval = setInterval(() => {
         progress += Math.random() * 15;
         if (progress >= 100) {
-          progress用戶
-
-System: 100;
+          progress = 100;
           clearInterval(interval);
           resolve();
         }
@@ -119,7 +117,8 @@ System: 100;
             selectedFiles[0].name,
             uploadSettings.language || 'en',
             uploadSettings.classification,
-            uploadSettings.enableOCR // Pass enableOCR
+            uploadSettings.enableOCR,
+            uploadSettings.enableAdvancedAnalysis // Pass advanced analysis setting
           );
           setUploadProgress(prev => ({ ...prev, [selectedFiles[0].id]: 100 }));
           setSelectedFiles(prev =>
@@ -137,10 +136,16 @@ System: 100;
         const titles = selectedFiles.map(f => f.name);
         const languages = selectedFiles.map(f => uploadSettings.language || 'en');
         const classifications = selectedFiles.map(f => uploadSettings.classification);
-        const enableOCR = uploadSettings.enableOCR; // Pass enableOCR
 
         try {
-          await batchUploadDocuments(files, titles, languages, classifications, enableOCR);
+          await batchUploadDocuments(
+            files, 
+            titles, 
+            languages, 
+            classifications, 
+            uploadSettings.enableOCR,
+            uploadSettings.enableAdvancedAnalysis // Pass advanced analysis setting
+          );
           setUploadProgress(prev => {
             const updatedProgress = { ...prev };
             selectedFiles.forEach(f => {
@@ -156,7 +161,7 @@ System: 100;
       }
 
       setTimeout(() => {
-        navigate('/analysis-dashboard');
+        navigate('/dashboard');
       }, 1000);
     } catch (error) {
       setErrors(['Upload failed. Please try again.']);
@@ -168,7 +173,10 @@ System: 100;
 
   const getEstimatedTime = () => {
     const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
-    const estimatedSeconds = Math.ceil(totalSize / (1024 * 1024) * 2);
+    const baseTime = Math.ceil(totalSize / (1024 * 1024) * 2);
+    // Add extra time for advanced analysis
+    const analysisTime = uploadSettings.enableAdvancedAnalysis ? baseTime * 0.5 : 0;
+    const estimatedSeconds = baseTime + analysisTime;
     return estimatedSeconds > 60 ? `${Math.ceil(estimatedSeconds / 60)} min` : `${estimatedSeconds} sec`;
   };
 
@@ -181,7 +189,6 @@ System: 100;
   return (
     <div className="min-h-screen bg-background">
       <GlobalHeader />
-      
       <main className="pt-16">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <BreadcrumbTrail />
@@ -250,10 +257,27 @@ System: 100;
                 isUploading={isUploading}
               />
 
+              {/* Analysis Mode Info */}
+              <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+                <div className="flex items-start space-x-2">
+                  <Icon name="Info" size={20} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-medium text-blue-800 mb-1">
+                      {uploadSettings.enableAdvancedAnalysis ? 'Advanced Analysis Enabled' : 'Basic Analysis Mode'}
+                    </h3>
+                    <p className="text-sm text-blue-700">
+                      {uploadSettings.enableAdvancedAnalysis 
+                        ? 'Documents will be analyzed using our AI-powered legal analysis microservice for detailed insights, entity extraction, and comprehensive summaries.'
+                        : 'Documents will use basic pattern-based analysis. Enable advanced analysis for better results.'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Upload Action */}
               <div className="bg-surface rounded-lg border border-border-light p-6">
                 <h3 className="font-semibold text-text-primary mb-4">Upload Summary</h3>
-                
                 <div className="space-y-3 mb-6">
                   <div className="flex justify-between text-sm">
                     <span className="text-text-secondary">Selected Files:</span>
@@ -263,6 +287,12 @@ System: 100;
                     <span className="text-text-secondary">Total Size:</span>
                     <span className="font-medium text-text-primary">
                       {(selectedFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024)).toFixed(1)} MB
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Analysis Mode:</span>
+                    <span className={`font-medium ${uploadSettings.enableAdvancedAnalysis ? 'text-primary' : 'text-text-secondary'}`}>
+                      {uploadSettings.enableAdvancedAnalysis ? 'Advanced' : 'Basic'}
                     </span>
                   </div>
                   {selectedFiles.length > 0 && (
@@ -278,13 +308,16 @@ System: 100;
                   disabled={selectedFiles.length === 0 || isUploading}
                   className={`w-full py-3 px-4 rounded-lg font-medium transition-colors duration-200 ${
                     selectedFiles.length === 0 || isUploading
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed' :'bg-primary text-white hover:bg-blue-700'
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-primary text-white hover:bg-blue-700'
                   }`}
                 >
                   {isUploading ? (
                     <div className="flex items-center justify-center space-x-2">
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Uploading...</span>
+                      <span>
+                        {uploadSettings.enableAdvancedAnalysis ? 'Uploading & Analyzing...' : 'Uploading...'}
+                      </span>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center space-x-2">
@@ -296,7 +329,7 @@ System: 100;
 
                 {selectedFiles.length > 0 && !isUploading && (
                   <p className="text-xs text-text-secondary mt-2 text-center">
-                    Files will be processed and analyzed automatically
+                    Files will be processed and {uploadSettings.enableAdvancedAnalysis ? 'analyzed with AI' : 'analyzed'} automatically
                   </p>
                 )}
               </div>
