@@ -1,4 +1,4 @@
-// src/api.js - Updated with file size and extracted text support for Python backend
+// src/api.js - Fixed version with proper CORS and request handling
 const API_BASE_URL = window.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : '/api');
 
 // Helper function to handle API responses
@@ -28,7 +28,12 @@ export const formatFileSize = (bytes) => {
 // Get all documents (maps to Flask /cases endpoint) - Updated with file_size
 export const getDocuments = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/cases`);
+    const response = await fetch(`${API_BASE_URL}/cases`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     const cases = await handleResponse(response);
     
     // Map Python backend response to frontend format
@@ -39,9 +44,9 @@ export const getDocuments = async () => {
       uploadedAt: case_item.creation_date,
       status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
       type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0, // Now using actual file size from database
-      fileSize: case_item.file_size || 0, // Alternative property name
-      fileSizeFormatted: formatFileSize(case_item.file_size), // Pre-formatted size
+      size: case_item.file_size || 0,
+      fileSize: case_item.file_size || 0,
+      fileSizeFormatted: formatFileSize(case_item.file_size),
       fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
       summary: case_item.summary,
       parties: case_item.parties,
@@ -51,7 +56,11 @@ export const getDocuments = async () => {
       document_language: case_item.document_language,
       analysis_duration_ms: case_item.analysis_duration_ms,
       classification: case_item.classification,
-      // For compatibility with frontend expectations
+      practice_area: case_item.practice_area,
+      priority: case_item.priority,
+      confidence_score: case_item.confidence_score,
+      needs_review: case_item.needs_review,
+      tags: case_item.tags,
       hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
       analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
       extractedInfo: {
@@ -80,10 +89,14 @@ export const getDocuments = async () => {
 // Get document by ID with extracted text content
 export const getDocumentById = async (id) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}`);
+    const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     const case_item = await handleResponse(response);
     
-    // Map the response to frontend format including extracted_text
     const document = {
       id: case_item.id,
       title: case_item.title || case_item.filename,
@@ -103,10 +116,14 @@ export const getDocumentById = async (id) => {
       document_language: case_item.document_language,
       analysis_duration_ms: case_item.analysis_duration_ms,
       classification: case_item.classification,
-      // Use the extracted_text from database as the main content
+      practice_area: case_item.practice_area,
+      priority: case_item.priority,
+      confidence_score: case_item.confidence_score,
+      needs_review: case_item.needs_review,
+      tags: case_item.tags,
       content: case_item.extracted_text || generateFallbackContent(case_item),
-      rawText: case_item.extracted_text, // Keep original extracted text
-      pages: 1, // Default to 1 page since we don't track pages
+      rawText: case_item.extracted_text,
+      pages: 1,
       hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
       analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
       extractedInfo: {
@@ -137,7 +154,12 @@ export const getDocumentById = async (id) => {
 // Get extracted text specifically for a document
 export const getDocumentText = async (id) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}/text`);
+    const response = await fetch(`${API_BASE_URL}/cases/${id}/text`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     return await handleResponse(response);
   } catch (error) {
     console.error('Error fetching document text:', error);
@@ -155,6 +177,16 @@ const generateFallbackContent = (case_item) => {
   
   if (case_item.file_size) {
     sections.push(`File Size: ${formatFileSize(case_item.file_size)}`);
+    sections.push('');
+  }
+  
+  if (case_item.practice_area) {
+    sections.push(`Practice Area: ${case_item.practice_area}`);
+    sections.push('');
+  }
+  
+  if (case_item.priority) {
+    sections.push(`Priority: ${case_item.priority.toUpperCase()}`);
     sections.push('');
   }
   
@@ -211,6 +243,10 @@ const generateFallbackContent = (case_item) => {
   sections.push(`Analysis Engine: Google Gemini AI`);
   sections.push(`Document Type: ${case_item.document_type || 'Unknown'}`);
   
+  if (case_item.confidence_score !== undefined) {
+    sections.push(`Confidence Score: ${(case_item.confidence_score * 100).toFixed(1)}%`);
+  }
+  
   if (case_item.analysis_duration_ms) {
     sections.push(`Analysis Duration: ${case_item.analysis_duration_ms}ms`);
   }
@@ -222,11 +258,11 @@ const generateFallbackContent = (case_item) => {
 };
 
 // Upload document (maps to Flask /analyze endpoint)
-export const uploadDocument = async (file, title, language = 'en', classification = 'auto', enableOCR = true, enableAdvancedAnalysis = true) => {
+export const uploadDocument = async (file, title, language = 'en', classification = 'auto', enableOCR = true, enableAdvancedAnalysis = true, priority = 'normal', practiceArea = '', tags = '') => {
   const formData = new FormData();
   formData.append('file', file);
   
-  // Add optional parameters if your Python backend supports them
+  // Add optional parameters
   if (title && title !== file.name) {
     formData.append('title', title);
   }
@@ -238,6 +274,15 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
   }
   if (!enableOCR) {
     formData.append('enableOCR', 'false');
+  }
+  if (priority !== 'normal') {
+    formData.append('priority', priority);
+  }
+  if (practiceArea) {
+    formData.append('practiceArea', practiceArea);
+  }
+  if (tags) {
+    formData.append('tags', tags);
   }
   
   try {
@@ -269,6 +314,9 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
       filename: file.name,
       fileSize: result.file_size || file.size,
       analysis_duration_ms: result.analysis_duration_ms,
+      practice_area: result.practice_area,
+      priority: result.priority,
+      confidence_score: result.confidence_score,
       analysis: result
     };
   } catch (error) {
@@ -277,37 +325,35 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
   }
 };
 
-// Batch upload documents (sequential processing since Python backend doesn't have batch endpoint)
-export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR = true, enableAdvancedAnalysis = true) => {
-  const results = [];
+// Batch upload documents
+export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR = true, enableAdvancedAnalysis = true, priorities = [], practiceAreas = []) => {
+  const formData = new FormData();
   
-  // Process files sequentially to avoid overwhelming the server
-  for (let i = 0; i < files.length; i++) {
-    try {
-      const result = await uploadDocument(
-        files[i],
-        titles[i],
-        languages[i],
-        classifications[i],
-        enableOCR,
-        enableAdvancedAnalysis
-      );
-      results.push(result);
-      
-      // Add a small delay between uploads to be respectful to the server
-      if (i < files.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    } catch (error) {
-      results.push({ 
-        error: error.message, 
-        filename: files[i].name,
-        status: 'failed'
-      });
-    }
+  // Add all files
+  files.forEach((file, index) => {
+    formData.append('files', file);
+  });
+  
+  // Add metadata arrays
+  titles.forEach(title => formData.append('titles', title));
+  languages.forEach(lang => formData.append('languages', lang));
+  classifications.forEach(cls => formData.append('classifications', cls));
+  priorities.forEach(priority => formData.append('priorities', priority));
+  practiceAreas.forEach(area => formData.append('practiceAreas', area));
+  
+  formData.append('enableOCR', enableOCR.toString());
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/batch-upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    return await handleResponse(response);
+  } catch (error) {
+    console.error('Batch upload error:', error);
+    throw error;
   }
-  
-  return results;
 };
 
 // Delete document (now supported by Python backend)
@@ -315,6 +361,9 @@ export const deleteDocument = async (id) => {
   try {
     const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
       method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+      },
     });
     
     if (response.ok) {
@@ -330,25 +379,33 @@ export const deleteDocument = async (id) => {
   }
 };
 
-// Analyze existing document (re-analysis using Python backend)
+// FIXED: Analyze existing document (re-analysis using Python backend)
 export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) => {
   try {
+    console.log(`Starting re-analysis for document ID: ${documentId}`);
+    
+    // Simple POST request without body - the backend doesn't expect any JSON data
     const response = await fetch(`${API_BASE_URL}/cases/${documentId}/reanalyze`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
-      body: JSON.stringify({
-        advanced_analysis: useAdvancedAnalysis
-      })
     });
     
+    console.log(`Re-analysis response status: ${response.status}`);
+    
     if (response.ok) {
-      return await response.json();
+      const result = await response.json();
+      console.log('Re-analysis successful:', result);
+      return result;
     } else if (response.status === 404) {
       throw new Error('Document not found');
+    } else if (response.status === 500) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Re-analysis failed due to server error');
     } else {
-      throw new Error('Failed to re-analyze document');
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`Failed to re-analyze document: ${response.status} - ${errorText}`);
     }
   } catch (error) {
     console.error('Re-analysis error:', error);
@@ -359,10 +416,14 @@ export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) =>
 // Search documents (maps to Flask /search endpoint)
 export const searchDocuments = async (keyword) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`);
+    const response = await fetch(`${API_BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     const cases = await handleResponse(response);
     
-    // Map to frontend format with file sizes
     return cases.map(case_item => ({
       id: case_item.id,
       title: case_item.title || case_item.filename,
@@ -375,8 +436,10 @@ export const searchDocuments = async (keyword) => {
       summary: case_item.summary,
       parties: case_item.parties,
       court: case_item.court,
+      practice_area: case_item.practice_area,
+      priority: case_item.priority,
       snippet: case_item.summary ? case_item.summary.substring(0, 200) + '...' : '',
-      relevanceScore: 0.95 // Mock relevance score
+      relevanceScore: 0.95
     }));
   } catch (error) {
     console.error('Search error:', error);
@@ -387,7 +450,12 @@ export const searchDocuments = async (keyword) => {
 // Get trends (maps to Flask /trends endpoint)
 export const getTrends = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/trends`);
+    const response = await fetch(`${API_BASE_URL}/trends`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     return await handleResponse(response);
   } catch (error) {
     console.error('Trends error:', error);
@@ -398,7 +466,12 @@ export const getTrends = async () => {
 // Get analytics (maps to Flask /analytics endpoint)
 export const getAnalytics = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/analytics`);
+    const response = await fetch(`${API_BASE_URL}/analytics`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
     return await handleResponse(response);
   } catch (error) {
     console.error('Analytics error:', error);
@@ -424,22 +497,20 @@ export const extractText = async (file) => {
   }
 };
 
-// Health check for Python backend
+// Enhanced health check for Python backend
 export const checkMicroservicesHealth = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, {
+    const response = await fetch(`${API_BASE_URL}/microservices/health`, {
       method: 'GET',
-      timeout: 5000
+      headers: {
+        'Accept': 'application/json',
+      },
+      // Remove timeout as it's not supported in fetch
     });
     
     if (response.ok) {
       const healthData = await response.json();
-      return {
-        overall_status: 'healthy',
-        python_backend: 'healthy',
-        database: healthData.database || 'connected',
-        timestamp: healthData.timestamp || new Date().toISOString()
-      };
+      return healthData;
     } else {
       throw new Error('Health check failed');
     }
@@ -447,9 +518,51 @@ export const checkMicroservicesHealth = async () => {
     console.error('Health check error:', error);
     return {
       overall_status: 'unavailable',
-      python_backend: 'unavailable',
+      services: {
+        database: { status: 'unknown' },
+        gemini_api: { status: 'unknown' },
+        file_system: { status: 'unknown' }
+      },
       error: error.message,
       timestamp: new Date().toISOString()
+    };
+  }
+};
+
+// Get practice areas
+export const getPracticeAreas = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/practice-areas`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    console.error('Practice areas error:', error);
+    return [];
+  }
+};
+
+// Get quick filter statistics
+export const getQuickFilterStats = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/quick-filters`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    console.error('Quick filters error:', error);
+    return {
+      high_priority: 0,
+      completed_today: 0,
+      needs_review: 0,
+      processing_errors: 0,
+      low_confidence: 0
     };
   }
 };
@@ -521,6 +634,8 @@ export default {
   getAnalytics,
   extractText,
   checkMicroservicesHealth,
+  getPracticeAreas,
+  getQuickFilterStats,
   getDocumentStats,
   formatFileSize,
   validateFile

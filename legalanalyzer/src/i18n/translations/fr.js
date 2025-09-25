@@ -1,7 +1,7 @@
 // src/i18n/translations/fr.js
 export default {
   // Global
-  appName: 'LegalDocs',
+  appName: 'DocuLexis',
   language: 'Français',
   
   // Navigation

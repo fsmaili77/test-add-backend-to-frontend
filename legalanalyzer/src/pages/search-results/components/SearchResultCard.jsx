@@ -22,7 +22,7 @@ const SearchResultCard = ({ result, searchQuery }) => {
   };
 
   const handleViewDocument = () => {
-    navigate(`/document-viewer?doc=${encodeURIComponent(result.title)}&id=${result.id}`);
+    navigate(`/document-viewer?doc=${encodeURIComponent(result.id)}`);
   };
 
   const handleAnalyzeDocument = () => {

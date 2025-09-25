@@ -6,7 +6,7 @@ import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
 import RecentActivity from './components/RecentActivity';
 import { useLanguage } from 'contexts/LanguageContext';
-import { getDocuments, deleteDocument, analyzeDocument, checkMicroservicesHealth, formatFileSize } from '../../api';
+import { getDocuments, getDocumentById, deleteDocument, analyzeDocument, checkMicroservicesHealth, formatFileSize } from '../../api';
 
 const Dashboard = () => {
   const { texts } = useLanguage();
@@ -75,56 +75,86 @@ const Dashboard = () => {
     }
   };
 
-  // Handle analyze document with better error handling
-  const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
-    const document = documents.find(doc => doc.id === id);
+// Enhanced handleAnalyze function with better error handling and debugging
+const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
+  const document = documents.find(doc => doc.id === id);
+  
+  if (!document) {
+    console.error('Document not found in local state:', id);
+    console.log('Available documents:', documents.map(d => ({ id: d.id, filename: d.filename })));
+    alert('Document not found in the current list. Please refresh the page.');
+    return;
+  }
+
+  console.log('Document found:', { id: document.id, filename: document.filename, status: document.status });
+
+  if (document.status === 'Analyzed' && document.hasAdvancedAnalysis) {
+    // Document already analyzed, just open it
+    window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
+    return;
+  }
+
+  setAnalyzingDocument(id);
+  try {
+    console.log(`Starting analysis for document ID: ${id}`);
     
-    if (!document) {
-      alert('Document not found');
-      return;
-    }
-
-    if (document.status === 'Analyzed' && document.hasAdvancedAnalysis) {
-      // Document already analyzed, just open it
-      window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
-      return;
-    }
-
-    setAnalyzingDocument(id);
+    // First, verify the document exists on the server using the imported getDocumentById function
     try {
-      const result = await analyzeDocument(id, useAdvancedAnalysis);
-      
-      // Update the document in the local state
-      setDocuments(prev => prev.map(doc =>
-        doc.id === id
-          ? {
-              ...doc,
-              status: 'Analyzed',
-              hasAdvancedAnalysis: true,
-              analysisProgress: 100
-            }
-          : doc
-      ));
-
-      // Navigate to the document viewer with analysis view
-      window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
-    } catch (err) {
-      console.error('Analysis error:', err);
-      
-      if (err.message.includes('not implemented') || err.message.includes('not available')) {
-        // If re-analysis is not available but document is already analyzed, just open it
-        if (document.status === 'Analyzed') {
-          window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
-        } else {
-          alert('Re-analysis functionality is not available. Document appears to already be processed.');
-        }
-      } else {
-        alert(`Analysis failed: ${err.message}`);
+      await getDocumentById(id);
+      console.log('Document exists on server, proceeding with analysis...');
+    } catch (verifyError) {
+      console.error('Document verification failed:', verifyError);
+      if (verifyError.message.includes('not found') || verifyError.message.includes('404')) {
+        throw new Error(`Document ID ${id} not found on server. It may have been deleted.`);
       }
-    } finally {
-      setAnalyzingDocument(null);
+      throw new Error(`Server error during verification: ${verifyError.message}`);
     }
-  };
+    
+    const result = await analyzeDocument(id, useAdvancedAnalysis);
+    console.log('Analysis completed:', result);
+    
+    // Update the document in the local state with new information
+    setDocuments(prev => prev.map(doc =>
+      doc.id === id
+        ? {
+            ...doc,
+            status: 'Analyzed',
+            hasAdvancedAnalysis: true,
+            analysisProgress: 100,
+            practice_area: result.practice_area,
+            priority: result.priority,
+            confidence_score: result.confidence_score,
+            analysis_duration_ms: result.analysis_duration_ms
+          }
+        : doc
+    ));
+
+    // Show success message
+    //alert(`Document "${document.filename}" has been successfully re-analyzed!`);
+    
+    // Navigate to the document viewer with analysis view
+    window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
+  } catch (err) {
+    console.error('Analysis error:', err);
+    
+    if (err.message.includes('not found')) {
+      alert(`Document not found: "${document.filename}" may have been deleted from the server. Please refresh the page to sync your document list.`);
+      // Optionally, remove the document from local state
+      setDocuments(prev => prev.filter(doc => doc.id !== id));
+    } else if (err.message.includes('not implemented') || err.message.includes('not available')) {
+      // If re-analysis is not available but document is already analyzed, just open it
+      if (document.status === 'Analyzed') {
+        window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
+      } else {
+        alert('Re-analysis functionality is not available. Document appears to already be processed.');
+      }
+    } else {
+      alert(`Analysis failed: ${err.message}`);
+    }
+  } finally {
+    setAnalyzingDocument(null);
+  }
+};
 
   // Enhanced metrics calculation with Python backend data including file sizes
   const metrics = useMemo(() => {
@@ -326,7 +356,7 @@ const Dashboard = () => {
           {!loading && !error && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               {/* Left Section - Documents Table (8 cols) */}
-              <div className="xl:col-span-8">
+              <div className="xl:col-span-9">
                 {/* Filter Tabs */}
                 <div className="bg-surface rounded-lg border border-border-light mb-6">
                   <div className="border-b border-border-light">
@@ -587,7 +617,7 @@ const Dashboard = () => {
               </div>
 
               {/* Right Section - Metrics & Actions (4 cols) */}
-              <div className="xl:col-span-4 space-y-6">
+              <div className="xl:col-span-3 space-y-6">
                 {/* Key Metrics Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
                   <div className="bg-surface rounded-lg border border-border-light p-6">
