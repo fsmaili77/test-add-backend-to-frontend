@@ -13,9 +13,12 @@ export default defineConfig({
   },
   plugins: [tsconfigPaths(), react(), tagger()],
   server: {
-    port: "4028",
+    port: "5173",
     host: "0.0.0.0",
     strictPort: true,
+    proxy: {
+    '/service-plus': 'http://localhost:3001', // Backend port
+  },
     allowedHosts: ['.amazonaws.com', '.builtwithrocket.new']
   }
 });

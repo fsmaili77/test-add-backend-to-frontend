@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// src/pages/login/index.jsx
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-
+import authService from '../../services/authService';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = location.state?.message;
+
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -13,16 +17,13 @@ const Login = () => {
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showTwoFactor, setShowTwoFactor] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState('');
 
-  // Mock credentials for different user types
-  const mockCredentials = [
-    { email: 'attorney@legalfirm.com', password: 'Legal@123', role: 'Attorney' },
-    { email: 'paralegal@legalfirm.com', password: 'Para@456', role: 'Paralegal' },
-    { email: 'researcher@legalfirm.com', password: 'Research@789', role: 'Legal Researcher' },
-    { email: 'admin@legalfirm.com', password: 'Admin@2024', role: 'Administrator' }
-  ];
+  // Check if already authenticated
+  useEffect(() => {
+    if (authService.isAuthenticated()) {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -30,7 +31,7 @@ const Login = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -39,19 +40,19 @@ const Login = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    
+
     if (!formData.email) {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
-    
+
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters';
     }
-    
+
     return newErrors;
   };
 
@@ -68,166 +69,60 @@ const Login = () => {
     setErrors({});
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check credentials
-      const validUser = mockCredentials.find(
-        cred => cred.email === formData.email && cred.password === formData.password
-      );
+      const result = await authService.login(formData.email, formData.password);
 
-      if (!validUser) {
-        setErrors({ 
-          general: 'Invalid email or password. Please check your credentials and try again.' 
-        });
-        setIsLoading(false);
-        return;
+      if (result.success) {
+        // Get user and redirect based on role
+        const user = result.user;
+        
+        // Redirect based on role
+        if (user.roles.includes('Admin')) {
+          navigate('/admin/dashboard');
+        } else if (user.roles.includes('Manager')) {
+          navigate('/manager/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
+      } else {
+        setErrors({ general: result.error });
       }
-
-      // Show two-factor authentication
-      setShowTwoFactor(true);
-      setIsLoading(false);
-      
     } catch (error) {
-      setErrors({ general: 'An error occurred. Please try again.' });
+      console.error('Login error:', error);
+      setErrors({ 
+        general: 'An unexpected error occurred. Please try again.' 
+      });
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const handleTwoFactorSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!twoFactorCode || twoFactorCode.length !== 6) {
-      setErrors({ twoFactor: 'Please enter a valid 6-digit code' });
-      return;
-    }
-
+  const handleDemoLogin = async (email, password) => {
+    setFormData({ email, password, rememberMe: false });
     setIsLoading(true);
-    
-    try {
-      // Simulate 2FA verification
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock 2FA code validation (accept 123456 or 000000)
-      if (twoFactorCode !== '123456' && twoFactorCode !== '000000') {
-        setErrors({ twoFactor: 'Invalid verification code. Please try again.' });
-        setIsLoading(false);
-        return;
-      }
+    setErrors({});
 
-      // Store auth token and user info
-      localStorage.setItem('authToken', 'mock-jwt-token');
-      localStorage.setItem('userEmail', formData.email);
-      
-      // Redirect to dashboard
-      navigate('/dashboard');
-      
+    try {
+      const result = await authService.login(email, password);
+
+      if (result.success) {
+        const user = result.user;
+        
+        if (user.roles.includes('Admin')) {
+          navigate('/admin/dashboard');
+        } else if (user.roles.includes('Manager')) {
+          navigate('/manager/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
+      } else {
+        setErrors({ general: result.error });
+      }
     } catch (error) {
-      setErrors({ twoFactor: 'Verification failed. Please try again.' });
+      setErrors({ general: 'An unexpected error occurred. Please try again.' });
+    } finally {
       setIsLoading(false);
     }
   };
-
-  const handleResendCode = () => {
-    // Mock resend functionality
-    alert('Verification code sent to your registered mobile number');
-  };
-
-  if (showTwoFactor) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-surface rounded-2xl shadow-elevation-3 p-8">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
-                <Icon name="Shield" size={32} color="white" />
-              </div>
-              <h1 className="text-2xl font-bold text-text-primary mb-2">Two-Factor Authentication</h1>
-              <p className="text-text-secondary">
-                Enter the 6-digit code sent to your registered mobile number
-              </p>
-            </div>
-
-            {/* Two-Factor Form */}
-            <form onSubmit={handleTwoFactorSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="twoFactorCode" className="block text-sm font-medium text-text-primary mb-2">
-                  Verification Code
-                </label>
-                <input
-                  type="text"
-                  id="twoFactorCode"
-                  name="twoFactorCode"
-                  value={twoFactorCode}
-                  onChange={(e) => {
-                    setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                    if (errors.twoFactor) {
-                      setErrors(prev => ({ ...prev, twoFactor: '' }));
-                    }
-                  }}
-                  placeholder="000000"
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent text-center text-2xl font-mono tracking-widest ${
-                    errors.twoFactor ? 'border-error' : 'border-border-light'
-                  }`}
-                  maxLength={6}
-                />
-                {errors.twoFactor && (
-                  <p className="mt-2 text-sm text-error flex items-center">
-                    <Icon name="AlertCircle" size={16} className="mr-1" />
-                    {errors.twoFactor}
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading || twoFactorCode.length !== 6}
-                className="w-full bg-primary text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify & Sign In'
-                )}
-              </button>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={handleResendCode}
-                  className="text-primary hover:text-blue-700 text-sm font-medium"
-                >
-                  Resend Code
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTwoFactor(false);
-                  setTwoFactorCode('');
-                  setErrors({});
-                }}
-                className="w-full text-text-secondary hover:text-text-primary text-sm font-medium"
-              >
-                ← Back to Login
-              </button>
-            </form>
-          </div>
-
-          {/* Mock Credentials Info */}
-          <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
-            <p className="text-sm text-amber-800 font-medium mb-2">Demo 2FA Code:</p>
-            <p className="text-sm text-amber-700">Use <strong>123456</strong> or <strong>000000</strong> to proceed</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
@@ -242,8 +137,20 @@ const Login = () => {
               <h1 className="text-2xl font-bold text-primary">LegalAnalyzer</h1>
             </div>
             <h2 className="text-xl font-semibold text-text-primary mb-2">Welcome Back</h2>
-            <p className="text-text-secondary">Sign in to access your legal document analysis platform</p>
+            <p className="text-text-secondary">
+              Sign in to access your legal document analysis platform
+            </p>
           </div>
+
+          {/* Registration Success Message */}
+          {successMessage && (
+            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <Icon name="CheckCircle" size={20} className="text-green-600 mr-3" />
+                <p className="text-sm text-green-800">{successMessage}</p>
+              </div>
+            </div>
+          )}
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -267,7 +174,8 @@ const Login = () => {
                 value={formData.email}
                 onChange={handleInputChange}
                 placeholder="Enter your email"
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent ${
+                disabled={isLoading}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
                   errors.email ? 'border-error' : 'border-border-light'
                 }`}
               />
@@ -291,7 +199,8 @@ const Login = () => {
                   value={formData.password}
                   onChange={handleInputChange}
                   placeholder="Enter your password"
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent ${
+                  disabled={isLoading}
+                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
                     errors.password ? 'border-error' : 'border-border-light'
                   }`}
                 />
@@ -299,6 +208,7 @@ const Login = () => {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary"
+                  disabled={isLoading}
                 >
                   <Icon name={showPassword ? 'EyeOff' : 'Eye'} size={20} />
                 </button>
@@ -318,10 +228,12 @@ const Login = () => {
                   name="rememberMe"
                   checked={formData.rememberMe}
                   onChange={handleInputChange}
-                  className="h-4 w-4 text-primary focus:ring-accent border-border-medium rounded"
+                  disabled={isLoading}
+                  className="h-4 w-4 text-primary focus:ring-accent border-border-medium rounded disabled:opacity-50"
                 />
                 <span className="ml-2 text-sm text-text-secondary">Remember me</span>
               </label>
+
               <Link
                 to="/forgot-password"
                 className="text-sm text-primary hover:text-blue-700 font-medium"
@@ -357,15 +269,24 @@ const Login = () => {
           </div>
         </div>
 
-        {/* Mock Credentials Info */}
+        {/* Demo Credentials Info */}
         <div className="mt-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
           <h3 className="text-sm font-medium text-amber-800 mb-3">Demo Credentials:</h3>
           <div className="space-y-2 text-xs text-amber-700">
-            <div><strong>Attorney:</strong> attorney@legalfirm.com / Legal@123</div>
-            <div><strong>Paralegal:</strong> paralegal@legalfirm.com / Para@456</div>
-            <div><strong>Researcher:</strong> researcher@legalfirm.com / Research@789</div>
-            <div><strong>Admin:</strong> admin@legalfirm.com / Admin@2024</div>
+            <div className="flex justify-between items-center">
+              <span><strong>Admin:</strong> admin@legaldocs.com / Admin@123456</span>
+              <button
+                onClick={() => handleDemoLogin('admin@legaldocs.com', 'Admin@123456')}
+                className="ml-2 px-2 py-1 bg-amber-200 hover:bg-amber-300 rounded text-amber-900 font-medium"
+                disabled={isLoading}
+              >
+                Use
+              </button>
+            </div>
           </div>
+          <p className="mt-3 text-xs text-amber-600 italic">
+            Click "Use" to auto-fill credentials
+          </p>
         </div>
       </div>
     </div>

@@ -711,6 +711,14 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                       <Icon name="BarChart3" size={16} className="mr-2"/>
                       {texts.viewAnalytics || 'View Analytics'}
                     </Link>
+                    <Link to="/service-plus"
+                      className="w-full flex items-center justify-center px-4 py-3 border border-border-medium rounded-lg text-sm font-medium text-text-primary bg-surface hover:bg-gray-50 transition-colors duration-200"
+                    >
+                      <Icon name="Star" size={16} className="mr-2"/>
+                      {texts.servicePlus || 'Service Plus'}
+                    </Link>
+                    {/* Add more quick action buttons as needed */
+                    }
                     <Link
                       to="/search-results"
                       className="w-full flex items-center justify-center px-4 py-3 border border-border-medium rounded-lg text-sm font-medium text-text-primary bg-surface hover:bg-gray-50 transition-colors duration-200"

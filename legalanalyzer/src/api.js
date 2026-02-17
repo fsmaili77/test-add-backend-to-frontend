@@ -1,9 +1,49 @@
-// src/api.js - Fixed version with proper CORS and request handling
+// src/api.js - Complete with Authentication Support
+import authService from './services/authService';
+
 const API_BASE_URL = window.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : '/api');
+
+// Helper function to get auth headers
+const getAuthHeaders = () => {
+  const headers = {
+    'Accept': 'application/json',
+  };
+  
+  // Add authorization token if available
+  const authHeaders = authService.getAuthHeaders();
+  console.log('Using auth headers:', authHeaders);
+  if (authHeaders.Authorization) {
+    headers.Authorization = authHeaders.Authorization;
+  }
+  
+  return headers;
+};
 
 // Helper function to handle API responses
 const handleResponse = async (response) => {
   if (!response.ok) {
+    // Handle authentication errors
+    if (response.status === 401) {
+      // Token expired or invalid - try to refresh
+      try {
+        await authService.refreshAccessToken();
+        throw new Error('AUTH_RETRY'); // Signal to retry the request
+      } catch (refreshError) {
+        // Refresh failed - redirect to login
+        authService.logout();
+        window.location.href = '/login';
+        throw new Error('Authentication required. Please log in again.');
+      }
+    }
+    
+    if (response.status === 403) {
+      const errorData = await response.json().catch(() => ({}));
+      if (errorData.quota_exceeded) {
+        throw new Error(`Document quota exceeded: ${errorData.error}`);
+      }
+      throw new Error('You do not have permission to perform this action.');
+    }
+    
     let errorMessage;
     try {
       const errorData = await response.json();
@@ -25,152 +65,9 @@ export const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// Get all documents (maps to Flask /cases endpoint) - Updated with file_size
-export const getDocuments = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    const cases = await handleResponse(response);
-    
-    // Map Python backend response to frontend format
-    return cases.map(case_item => ({
-      id: case_item.id,
-      title: case_item.title || case_item.filename,
-      filename: case_item.filename,
-      uploadedAt: case_item.creation_date,
-      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
-      type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0,
-      fileSize: case_item.file_size || 0,
-      fileSizeFormatted: formatFileSize(case_item.file_size),
-      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
-      summary: case_item.summary,
-      parties: case_item.parties,
-      court: case_item.court,
-      document_date: case_item.document_date,
-      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
-      document_language: case_item.document_language,
-      analysis_duration_ms: case_item.analysis_duration_ms,
-      classification: case_item.classification,
-      practice_area: case_item.practice_area,
-      priority: case_item.priority,
-      confidence_score: case_item.confidence_score,
-      needs_review: case_item.needs_review,
-      tags: case_item.tags,
-      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
-      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
-      extractedInfo: {
-        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
-          name: p.trim(),
-          role: 'Unknown',
-          type: 'Entity'
-        })) : [],
-        keyDates: case_item.document_date ? [{
-          description: 'Document Date',
-          date: case_item.document_date
-        }] : [],
-        financialTerms: [],
-        riskAssessment: {
-          overall: 'Unknown',
-          factors: []
-        }
-      }
-    }));
-  } catch (error) {
-    console.error('Error fetching documents:', error);
-    throw new Error('Failed to fetch documents from server');
-  }
-};
-
-// Get document by ID with extracted text content
-export const getDocumentById = async (id) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    const case_item = await handleResponse(response);
-    
-    const document = {
-      id: case_item.id,
-      title: case_item.title || case_item.filename,
-      filename: case_item.filename,
-      uploadedAt: case_item.creation_date,
-      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
-      type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0,
-      fileSize: case_item.file_size || 0,
-      fileSizeFormatted: formatFileSize(case_item.file_size),
-      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
-      summary: case_item.summary,
-      parties: case_item.parties,
-      court: case_item.court,
-      document_date: case_item.document_date,
-      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
-      document_language: case_item.document_language,
-      analysis_duration_ms: case_item.analysis_duration_ms,
-      classification: case_item.classification,
-      practice_area: case_item.practice_area,
-      priority: case_item.priority,
-      confidence_score: case_item.confidence_score,
-      needs_review: case_item.needs_review,
-      tags: case_item.tags,
-      content: case_item.extracted_text || generateFallbackContent(case_item),
-      rawText: case_item.extracted_text,
-      pages: 1,
-      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
-      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
-      extractedInfo: {
-        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
-          name: p.trim(),
-          role: 'Unknown',
-          type: 'Entity'
-        })) : [],
-        keyDates: case_item.document_date ? [{
-          description: 'Document Date',
-          date: case_item.document_date
-        }] : [],
-        financialTerms: [],
-        riskAssessment: {
-          overall: 'Unknown',
-          factors: []
-        }
-      }
-    };
-
-    return document;
-  } catch (error) {
-    console.error('Error fetching document by ID:', error);
-    throw error;
-  }
-};
-
-// Get extracted text specifically for a document
-export const getDocumentText = async (id) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}/text`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching document text:', error);
-    throw error;
-  }
-};
-
 // Helper function to generate fallback content if extracted_text is empty
 const generateFallbackContent = (case_item) => {
   const sections = [];
-  
   sections.push(`DOCUMENT: ${case_item.filename || 'Unknown'}`);
   sections.push('=' + '='.repeat((case_item.filename || 'Unknown').length + 9));
   sections.push('');
@@ -257,12 +154,147 @@ const generateFallbackContent = (case_item) => {
   return sections.join('\n');
 };
 
-// Upload document (maps to Flask /analyze endpoint)
+// Get all documents with authentication
+export const getDocuments = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/cases`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const cases = await handleResponse(response);
+    
+    // Map Python backend response to frontend format
+    return cases.map(case_item => ({
+      id: case_item.id,
+      title: case_item.title || case_item.filename,
+      filename: case_item.filename,
+      uploadedAt: case_item.creation_date,
+      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
+      type: case_item.document_type || 'unknown',
+      size: case_item.file_size || 0,
+      fileSize: case_item.file_size || 0,
+      fileSizeFormatted: formatFileSize(case_item.file_size),
+      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
+      summary: case_item.summary,
+      parties: case_item.parties,
+      court: case_item.court,
+      document_date: case_item.document_date,
+      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
+      document_language: case_item.document_language,
+      analysis_duration_ms: case_item.analysis_duration_ms,
+      classification: case_item.classification,
+      practice_area: case_item.practice_area,
+      priority: case_item.priority,
+      confidence_score: case_item.confidence_score,
+      needs_review: case_item.needs_review,
+      tags: case_item.tags,
+      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
+      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
+      extractedInfo: {
+        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
+          name: p.trim(),
+          role: 'Unknown',
+          type: 'Entity'
+        })) : [],
+        keyDates: case_item.document_date ? [{
+          description: 'Document Date',
+          date: case_item.document_date
+        }] : [],
+        financialTerms: [],
+        riskAssessment: {
+          overall: 'Unknown',
+          factors: []
+        }
+      }
+    }));
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    throw error;
+  }
+};
+
+// Get document by ID with extracted text content
+export const getDocumentById = async (id) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const case_item = await handleResponse(response);
+    
+    const document = {
+      id: case_item.id,
+      title: case_item.title || case_item.filename,
+      filename: case_item.filename,
+      uploadedAt: case_item.creation_date,
+      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
+      type: case_item.document_type || 'unknown',
+      size: case_item.file_size || 0,
+      fileSize: case_item.file_size || 0,
+      fileSizeFormatted: formatFileSize(case_item.file_size),
+      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
+      summary: case_item.summary,
+      parties: case_item.parties,
+      court: case_item.court,
+      document_date: case_item.document_date,
+      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
+      document_language: case_item.document_language,
+      analysis_duration_ms: case_item.analysis_duration_ms,
+      classification: case_item.classification,
+      practice_area: case_item.practice_area,
+      priority: case_item.priority,
+      confidence_score: case_item.confidence_score,
+      needs_review: case_item.needs_review,
+      tags: case_item.tags,
+      content: case_item.extracted_text || generateFallbackContent(case_item),
+      rawText: case_item.extracted_text,
+      pages: 1,
+      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
+      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
+      extractedInfo: {
+        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
+          name: p.trim(),
+          role: 'Unknown',
+          type: 'Entity'
+        })) : [],
+        keyDates: case_item.document_date ? [{
+          description: 'Document Date',
+          date: case_item.document_date
+        }] : [],
+        financialTerms: [],
+        riskAssessment: {
+          overall: 'Unknown',
+          factors: []
+        }
+      }
+    };
+    
+    return document;
+  } catch (error) {
+    console.error('Error fetching document by ID:', error);
+    throw error;
+  }
+};
+
+// Get extracted text specifically for a document
+export const getDocumentText = async (id) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/cases/${id}/text`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    console.error('Error fetching document text:', error);
+    throw error;
+  }
+};
+
+// Upload document with authentication
 export const uploadDocument = async (file, title, language = 'en', classification = 'auto', enableOCR = true, enableAdvancedAnalysis = true, priority = 'normal', practiceArea = '', tags = '') => {
   const formData = new FormData();
   formData.append('file', file);
   
-  // Add optional parameters
   if (title && title !== file.name) {
     formData.append('title', title);
   }
@@ -284,14 +316,31 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
   if (tags) {
     formData.append('tags', tags);
   }
-  
+
   try {
+    const headers = {};
+    const authHeaders = authService.getAuthHeaders();
+    if (authHeaders.Authorization) {
+      headers.Authorization = authHeaders.Authorization;
+    }
+
     const response = await fetch(`${API_BASE_URL}/analyze`, {
       method: 'POST',
+      headers: headers, // Don't set Content-Type - browser will set it with boundary for FormData
       body: formData,
     });
-    
+
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Authentication required. Please log in.');
+      }
+      if (response.status === 403) {
+        const errorData = await response.json().catch(() => ({}));
+        if (errorData.quota_exceeded) {
+          throw new Error(`Quota exceeded: You have used ${errorData.processed}/${errorData.quota} documents this month.`);
+        }
+        throw new Error('You do not have permission to upload documents.');
+      }
       if (response.status === 503) {
         throw new Error('AI service is temporarily unavailable. Please try again later.');
       } else if (response.status === 500) {
@@ -305,7 +354,7 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
         throw new Error(`Upload failed with status: ${response.status}`);
       }
     }
-    
+
     const result = await response.json();
     return {
       id: result.id || result.case_id,
@@ -325,7 +374,7 @@ export const uploadDocument = async (file, title, language = 'en', classificatio
   }
 };
 
-// Batch upload documents
+// Batch upload documents with authentication
 export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR = true, enableAdvancedAnalysis = true, priorities = [], practiceAreas = []) => {
   const formData = new FormData();
   
@@ -340,15 +389,20 @@ export const batchUploadDocuments = async (files, titles, languages, classificat
   classifications.forEach(cls => formData.append('classifications', cls));
   priorities.forEach(priority => formData.append('priorities', priority));
   practiceAreas.forEach(area => formData.append('practiceAreas', area));
-  
   formData.append('enableOCR', enableOCR.toString());
   
   try {
+    const headers = {};
+    const authHeaders = authService.getAuthHeaders();
+    if (authHeaders.Authorization) {
+      headers.Authorization = authHeaders.Authorization;
+    }
+
     const response = await fetch(`${API_BASE_URL}/batch-upload`, {
       method: 'POST',
+      headers: headers,
       body: formData,
     });
-    
     return await handleResponse(response);
   } catch (error) {
     console.error('Batch upload error:', error);
@@ -356,20 +410,20 @@ export const batchUploadDocuments = async (files, titles, languages, classificat
   }
 };
 
-// Delete document (now supported by Python backend)
+// Delete document with authentication
 export const deleteDocument = async (id) => {
   try {
     const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
       method: 'DELETE',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
-    
+
     if (response.ok) {
       return await response.json();
     } else if (response.status === 404) {
       throw new Error('Document not found');
+    } else if (response.status === 403) {
+      throw new Error('You do not have permission to delete this document');
     } else {
       throw new Error('Failed to delete document');
     }
@@ -379,17 +433,14 @@ export const deleteDocument = async (id) => {
   }
 };
 
-// FIXED: Analyze existing document (re-analysis using Python backend)
+// Analyze existing document (re-analysis) with authentication
 export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) => {
   try {
     console.log(`Starting re-analysis for document ID: ${documentId}`);
     
-    // Simple POST request without body - the backend doesn't expect any JSON data
     const response = await fetch(`${API_BASE_URL}/cases/${documentId}/reanalyze`, {
       method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     
     console.log(`Re-analysis response status: ${response.status}`);
@@ -400,6 +451,8 @@ export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) =>
       return result;
     } else if (response.status === 404) {
       throw new Error('Document not found');
+    } else if (response.status === 403) {
+      throw new Error('You do not have permission to analyze this document');
     } else if (response.status === 500) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || 'Re-analysis failed due to server error');
@@ -413,14 +466,12 @@ export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) =>
   }
 };
 
-// Search documents (maps to Flask /search endpoint)
+// Search documents with authentication
 export const searchDocuments = async (keyword) => {
   try {
     const response = await fetch(`${API_BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     const cases = await handleResponse(response);
     
@@ -443,18 +494,16 @@ export const searchDocuments = async (keyword) => {
     }));
   } catch (error) {
     console.error('Search error:', error);
-    throw new Error('Failed to search documents');
+    throw error;
   }
 };
 
-// Get trends (maps to Flask /trends endpoint)
+// Get trends with authentication
 export const getTrends = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/trends`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse(response);
   } catch (error) {
@@ -463,14 +512,12 @@ export const getTrends = async () => {
   }
 };
 
-// Get analytics (maps to Flask /analytics endpoint)
+// Get analytics with authentication
 export const getAnalytics = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/analytics`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse(response);
   } catch (error) {
@@ -479,17 +526,23 @@ export const getAnalytics = async () => {
   }
 };
 
-// Extract text only (maps to Flask /extract-text endpoint)
+// Extract text only with authentication
 export const extractText = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
   
   try {
+    const headers = {};
+    const authHeaders = authService.getAuthHeaders();
+    if (authHeaders.Authorization) {
+      headers.Authorization = authHeaders.Authorization;
+    }
+
     const response = await fetch(`${API_BASE_URL}/extract-text`, {
       method: 'POST',
+      headers: headers,
       body: formData,
     });
-    
     return await handleResponse(response);
   } catch (error) {
     console.error('Text extraction error:', error);
@@ -502,10 +555,7 @@ export const checkMicroservicesHealth = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/microservices/health`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      // Remove timeout as it's not supported in fetch
+      headers: getAuthHeaders(),
     });
     
     if (response.ok) {
@@ -529,14 +579,12 @@ export const checkMicroservicesHealth = async () => {
   }
 };
 
-// Get practice areas
+// Get practice areas with authentication
 export const getPracticeAreas = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/practice-areas`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse(response);
   } catch (error) {
@@ -545,14 +593,12 @@ export const getPracticeAreas = async () => {
   }
 };
 
-// Get quick filter statistics
+// Get quick filter statistics with authentication
 export const getQuickFilterStats = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/quick-filters`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
     return await handleResponse(response);
   } catch (error) {
@@ -567,13 +613,12 @@ export const getQuickFilterStats = async () => {
   }
 };
 
-// Get document statistics
+// Get document statistics with authentication
 export const getDocumentStats = async () => {
   try {
     const documents = await getDocuments();
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
     const totalSize = documents.reduce((sum, doc) => sum + (doc.size || 0), 0);
     
     return {

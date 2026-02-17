@@ -1,6 +1,7 @@
-// legalanalyzer/src/pages/document-upload/index.jsx - Updated for Python Flask backend
+// legalanalyzer/src/pages/document-upload/index.jsx - Updated with Client Selection
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import GlobalHeader from 'components/ui/GlobalHeader';
 import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
@@ -8,19 +9,33 @@ import FileDropZone from './components/FileDropZone';
 import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
+import authService from 'services/authService';
 import { uploadDocument, batchUploadDocuments, validateFile, checkMicroservicesHealth } from '../../api';
+
+const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5000/api';
+const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:3001';
 
 const DocumentUpload = () => {
   const navigate = useNavigate();
+  
+  // Client management state
+  const [clients, setClients] = useState([]);
+  const [selectedClientId, setSelectedClientId] = useState(
+    localStorage.getItem('selectedClientId') || ''
+  );
+  const [loadingClients, setLoadingClients] = useState(true);
+  
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadSettings, setUploadSettings] = useState({
     classification: 'auto',
     customTags: '',
     enableOCR: true,
-    enableAdvancedAnalysis: true, // Always true for Python backend (Gemini analysis)
+    enableAdvancedAnalysis: true,
     extractMetadata: true,
     processInBackground: false,
-    language: 'en' // Added language setting
+    language: 'en',
+    priority: 'normal',
+    practiceArea: ''
   });
   const [uploadProgress, setUploadProgress] = useState({});
   const [isUploading, setIsUploading] = useState(false);
@@ -28,10 +43,14 @@ const DocumentUpload = () => {
   const [backendHealth, setBackendHealth] = useState(null);
   const [uploadResults, setUploadResults] = useState([]);
 
-  // Python backend supports PDF, DOCX, TXT, DOC
   const supportedFormats = ['PDF', 'DOCX', 'TXT', 'DOC'];
-  const maxFileSize = 50 * 1024 * 1024; // 50MB (matching Python backend limit)
+  const maxFileSize = 50 * 1024 * 1024; // 50MB
   const maxFiles = 20;
+
+  // Fetch clients on mount
+  useEffect(() => {
+    fetchClients();
+  }, []);
 
   // Check backend health on mount
   useEffect(() => {
@@ -52,6 +71,22 @@ const DocumentUpload = () => {
     checkHealth();
   }, []);
 
+  const fetchClients = async () => {
+    setLoadingClients(true);
+    try {
+      const response = await axios.get(`${API_URL}/clientmanagement/clients`, {
+        params: { isActive: true },
+        headers: authService.getAuthHeaders()
+      });
+      setClients(response.data.clients);
+    } catch (err) {
+      console.error('Failed to fetch clients:', err);
+      setErrors(prev => [...prev, 'Failed to load clients. Please refresh the page.']);
+    } finally {
+      setLoadingClients(false);
+    }
+  };
+
   const handleFilesSelected = useCallback((newFiles) => {
     const validFiles = [];
     const fileErrors = [];
@@ -62,7 +97,6 @@ const DocumentUpload = () => {
         return;
       }
 
-      // Check for duplicates
       const isDuplicate = selectedFiles.some(existing => 
         existing.name === file.name && existing.size === file.size
       );
@@ -102,18 +136,17 @@ const DocumentUpload = () => {
       delete newProgress[fileId];
       return newProgress;
     });
-    // Clear any errors related to this file
     setErrors([]);
   };
 
   const simulateProgress = (fileId, duration = 30000) => {
     let progress = 0;
-    const increment = 100 / (duration / 500); // Update every 500ms
+    const increment = 100 / (duration / 500);
     
     const interval = setInterval(() => {
-      progress += increment + Math.random() * 5; // Add some randomness
+      progress += increment + Math.random() * 5;
       if (progress >= 95) {
-        progress = 95; // Stop at 95% until actual completion
+        progress = 95;
         clearInterval(interval);
       }
       setUploadProgress(prev => ({
@@ -128,7 +161,12 @@ const DocumentUpload = () => {
   const startUpload = async () => {
     if (selectedFiles.length === 0) return;
     
-    // Check backend health before starting
+    // Validate client selection
+    if (!selectedClientId) {
+      setErrors(['Please select a client before uploading documents']);
+      return;
+    }
+    
     if (backendHealth?.overall_status === 'unavailable') {
       setErrors(['Backend service is currently unavailable. Please check your connection and try again.']);
       return;
@@ -139,22 +177,35 @@ const DocumentUpload = () => {
     setUploadResults([]);
 
     try {
-      // Update all files to uploading status
       setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
 
       if (selectedFiles.length === 1) {
         // Single file upload
         const file = selectedFiles[0];
-        const progressInterval = simulateProgress(file.id, 35000); // 35 seconds for Gemini analysis
+        const progressInterval = simulateProgress(file.id, 35000);
         
         try {
-          const result = await uploadDocument(
-            file.file,
-            file.name,
-            uploadSettings.language,
-            uploadSettings.classification,
-            uploadSettings.enableOCR,
-            uploadSettings.enableAdvancedAnalysis
+          // Create FormData with client ID
+          const formData = new FormData();
+          formData.append('file', file.file);
+          formData.append('title', file.name);
+          formData.append('language', uploadSettings.language);
+          formData.append('classification', uploadSettings.classification);
+          formData.append('enableOCR', uploadSettings.enableOCR);
+          formData.append('priority', uploadSettings.priority);
+          formData.append('practiceArea', uploadSettings.practiceArea);
+          formData.append('tags', uploadSettings.customTags);
+          formData.append('clientId', selectedClientId); // Add client ID
+
+          const response = await axios.post(
+            `${PYTHON_API_URL}/analyze`,
+            formData,
+            {
+              headers: {
+                ...authService.getAuthHeaders(),
+                'Content-Type': 'multipart/form-data'
+              }
+            }
           );
           
           clearInterval(progressInterval);
@@ -167,14 +218,14 @@ const DocumentUpload = () => {
             filename: file.name,
             status: 'success',
             message: 'Document uploaded and analyzed successfully',
-            id: result.id
+            id: response.data.id
           }]);
           
-          console.log('Upload successful:', result);
+          console.log('Upload successful:', response.data);
         } catch (error) {
           clearInterval(progressInterval);
           console.error('Upload error:', error);
-          setErrors(prev => [...prev, `Failed to upload ${file.name}: ${error.message}`]);
+          setErrors(prev => [...prev, `Failed to upload ${file.name}: ${error.response?.data?.error || error.message}`]);
           setSelectedFiles(prev =>
             prev.map(f => f.id === file.id ? { ...f, status: 'error' } : f)
           );
@@ -182,43 +233,57 @@ const DocumentUpload = () => {
           setUploadResults([{
             filename: file.name,
             status: 'failed',
-            error: error.message
+            error: error.response?.data?.error || error.message
           }]);
         }
       } else {
-        // Batch upload - Python backend processes files sequentially
-        const files = selectedFiles.map(f => f.file);
-        const titles = selectedFiles.map(f => f.name);
-        const languages = selectedFiles.map(() => uploadSettings.language);
-        const classifications = selectedFiles.map(() => uploadSettings.classification);
-
-        // Start progress simulation for all files
+        // Batch upload
         const progressIntervals = selectedFiles.map(file =>
-          simulateProgress(file.id, 35000) // 35 seconds per file for Gemini analysis
+          simulateProgress(file.id, 35000)
         );
 
         try {
-          const results = await batchUploadDocuments(
-            files,
-            titles,
-            languages,
-            classifications,
-            uploadSettings.enableOCR,
-            uploadSettings.enableAdvancedAnalysis
+          const formData = new FormData();
+          
+          // Add all files
+          selectedFiles.forEach(file => {
+            formData.append('files', file.file);
+          });
+          
+          // Add metadata arrays
+          selectedFiles.forEach(file => {
+            formData.append('titles', file.name);
+            formData.append('languages', uploadSettings.language);
+            formData.append('classifications', uploadSettings.classification);
+            formData.append('priorities', uploadSettings.priority);
+            formData.append('practiceAreas', uploadSettings.practiceArea);
+          });
+          
+          formData.append('enableOCR', uploadSettings.enableOCR);
+          formData.append('clientId', selectedClientId); // Add client ID for all files
+
+          const response = await axios.post(
+            `${PYTHON_API_URL}/batch-upload`,
+            formData,
+            {
+              headers: {
+                ...authService.getAuthHeaders(),
+                'Content-Type': 'multipart/form-data'
+              }
+            }
           );
 
-          // Clear all progress intervals
           progressIntervals.forEach(interval => clearInterval(interval));
 
-          // Process results and update status
+          const results = response.data.results || [];
           const uploadResults = [];
           let hasErrors = false;
 
           results.forEach((result, index) => {
-            const fileId = selectedFiles[index].id;
-            const filename = selectedFiles[index].name;
+            const fileId = selectedFiles[index]?.id;
+            const filename = selectedFiles[index]?.name;
 
-            if (result.error) {
+            if (result.status === 'error') {
               hasErrors = true;
               setErrors(prev => [...prev, `${filename}: ${result.error}`]);
               setSelectedFiles(prev => prev.map(f =>
@@ -249,21 +314,19 @@ const DocumentUpload = () => {
             console.log('Batch upload successful:', results);
           }
         } catch (error) {
-          // Clear all progress intervals
           progressIntervals.forEach(interval => clearInterval(interval));
           console.error('Batch upload error:', error);
-          setErrors(prev => [...prev, `Batch upload failed: ${error.message}`]);
+          setErrors(prev => [...prev, `Batch upload failed: ${error.response?.data?.error || error.message}`]);
           setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
           
           setUploadResults(selectedFiles.map(file => ({
             filename: file.name,
             status: 'failed',
-            error: error.message
+            error: error.response?.data?.error || error.message
           })));
         }
       }
 
-      // Navigate to dashboard after showing results
       if (!uploadSettings.processInBackground) {
         setTimeout(() => {
           navigate('/dashboard');
@@ -282,14 +345,12 @@ const DocumentUpload = () => {
     if (selectedFiles.length === 0) return '0 sec';
     
     const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
-    const baseSizeTime = Math.ceil(totalSize / (1024 * 1024) * 2); // 2 seconds per MB base time
+    const baseSizeTime = Math.ceil(totalSize / (1024 * 1024) * 2);
     
-    // Python backend with Gemini analysis takes longer
-    let analysisTime = selectedFiles.length * 30; // 30 seconds per file for Gemini analysis
+    let analysisTime = selectedFiles.length * 30;
     
-    // Add OCR time if enabled
     if (uploadSettings.enableOCR) {
-      analysisTime += selectedFiles.length * 15; // Additional 15 seconds per file for OCR
+      analysisTime += selectedFiles.length * 15;
     }
     
     const estimatedSeconds = baseSizeTime + analysisTime;
@@ -314,6 +375,8 @@ const DocumentUpload = () => {
     setIsUploading(false);
   };
 
+  const selectedClient = clients.find(c => c.id === parseInt(selectedClientId));
+
   return (
     <div className="min-h-screen bg-background">
       <GlobalHeader />
@@ -331,7 +394,6 @@ const DocumentUpload = () => {
                 </p>
               </div>
               
-              {/* Backend Status Indicator */}
               {backendHealth && (
                 <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
                   backendHealth.overall_status === 'healthy' 
@@ -346,6 +408,58 @@ const DocumentUpload = () => {
                   </span>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* CLIENT SELECTION - PROMINENT */}
+          <div className="mb-6 bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                <Icon name="User" size={24} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-semibold text-blue-900 mb-2">
+                  Select Client * {loadingClients && <span className="text-xs font-normal">(Loading...)</span>}
+                </label>
+                <select
+                  value={selectedClientId}
+                  onChange={(e) => {
+                    setSelectedClientId(e.target.value);
+                    localStorage.setItem('selectedClientId', e.target.value);
+                  }}
+                  disabled={loadingClients || isUploading}
+                  required
+                  className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white text-base disabled:opacity-50"
+                >
+                  <option value="">-- Select a client --</option>
+                  {clients.map(client => (
+                    <option key={client.id} value={client.id}>
+                      {client.firstName} {client.lastName} ({client.email})
+                      {client.company && ` - ${client.company}`}
+                    </option>
+                  ))}
+                </select>
+                {selectedClient && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-blue-700">
+                    <Icon name="CheckCircle" size={16} />
+                    <span>
+                      Selected: {selectedClient.firstName} {selectedClient.lastName}
+                      {selectedClient.company && ` - ${selectedClient.company}`}
+                    </span>
+                  </div>
+                )}
+                {!selectedClientId && !loadingClients && (
+                  <p className="mt-2 text-sm text-blue-700">
+                    Don't see your client?{' '}
+                    <button
+                      onClick={() => navigate('/clients')}
+                      className="font-medium underline hover:text-blue-900"
+                    >
+                      Add a new client
+                    </button>
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -404,7 +518,6 @@ const DocumentUpload = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Upload Area */}
             <div className="lg:col-span-2 space-y-6">
-              {/* File Drop Zone */}
               <FileDropZone
                 onFilesSelected={handleFilesSelected}
                 supportedFormats={supportedFormats}
@@ -413,7 +526,6 @@ const DocumentUpload = () => {
                 backendStatus={backendHealth?.overall_status}
               />
 
-              {/* Selected Files List */}
               {selectedFiles.length > 0 && (
                 <FileList
                   files={selectedFiles}
@@ -423,7 +535,6 @@ const DocumentUpload = () => {
                 />
               )}
 
-              {/* Upload Progress */}
               {isUploading && (
                 <ProgressTracker
                   totalProgress={getTotalProgress()}
@@ -493,6 +604,14 @@ const DocumentUpload = () => {
               <div className="bg-surface rounded-lg border border-border-light p-6">
                 <h3 className="font-semibold text-text-primary mb-4">Upload Summary</h3>
                 <div className="space-y-3 mb-6">
+                  {selectedClient && (
+                    <div className="flex justify-between text-sm pb-3 border-b border-border-light">
+                      <span className="text-text-secondary">Client:</span>
+                      <span className="font-medium text-primary">
+                        {selectedClient.firstName} {selectedClient.lastName}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm">
                     <span className="text-text-secondary">Selected Files:</span>
                     <span className="font-medium text-text-primary">{selectedFiles.length}</span>
@@ -532,9 +651,9 @@ const DocumentUpload = () => {
                 <div className="space-y-3">
                   <button
                     onClick={startUpload}
-                    disabled={selectedFiles.length === 0 || isUploading || backendHealth?.overall_status !== 'healthy'}
+                    disabled={!selectedClientId || selectedFiles.length === 0 || isUploading || backendHealth?.overall_status !== 'healthy'}
                     className={`w-full py-3 px-4 rounded-lg font-medium transition-colors duration-200 ${
-                      selectedFiles.length === 0 || isUploading || backendHealth?.overall_status !== 'healthy'
+                      !selectedClientId || selectedFiles.length === 0 || isUploading || backendHealth?.overall_status !== 'healthy'
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : 'bg-primary text-white hover:bg-blue-700'
                     }`}
@@ -543,6 +662,11 @@ const DocumentUpload = () => {
                       <div className="flex items-center justify-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         <span>Uploading & Analyzing with Gemini...</span>
+                      </div>
+                    ) : !selectedClientId ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <Icon name="AlertCircle" size={16} />
+                        <span>Select Client First</span>
                       </div>
                     ) : backendHealth?.overall_status !== 'healthy' ? (
                       <div className="flex items-center justify-center space-x-2">
@@ -567,7 +691,7 @@ const DocumentUpload = () => {
                   )}
                 </div>
 
-                {selectedFiles.length > 0 && !isUploading && backendHealth?.overall_status === 'healthy' && (
+                {selectedFiles.length > 0 && !isUploading && selectedClientId && backendHealth?.overall_status === 'healthy' && (
                   <p className="text-xs text-text-secondary mt-2 text-center">
                     Files will be processed with Gemini AI analysis automatically
                   </p>

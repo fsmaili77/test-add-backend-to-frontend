@@ -12,6 +12,7 @@ const BreadcrumbTrail = () => {
     '/document-viewer': { label: 'Document Viewer', icon: 'FileText', parent: '/dashboard' },
     '/search-results': { label: 'Search Results', icon: 'Search', parent: '/dashboard' },
     '/analysis-dashboard': { label: 'Analysis Dashboard', icon: 'BarChart3', parent: '/dashboard' },
+    '/service-plus': { label: 'Service Plus', icon: 'Star', parent: '/dashboard' },
   };
 
   const generateBreadcrumbs = () => {

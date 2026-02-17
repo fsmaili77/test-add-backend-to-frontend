@@ -9,6 +9,7 @@ export default {
   documents: 'Dokumente',
   search: 'Suche',
   analytics: 'Analytik',
+  servicePlus: 'Service Plus',
   
   // Actions
   signOut: 'Abmelden',

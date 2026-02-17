@@ -9,6 +9,7 @@ export default {
   documents: 'Documents',
   search: 'Search',
   analytics: 'Analytics',
+  servicePlus: 'Service Plus',
   
   // Actions
   signOut: 'Sign Out',

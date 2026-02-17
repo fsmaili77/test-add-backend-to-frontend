@@ -1,24 +1,55 @@
 // src/components/ui/GlobalHeader.jsx
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../AppIcon';
 import LanguageSelector from '../LanguageSelector';
 import { useLanguage } from '../../contexts/LanguageContext';
+import authService from '../../services/authService';
 
 const GlobalHeader = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [user, setUser] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const userMenuRef = useRef(null);
   const { texts } = useLanguage();
 
+  useEffect(() => {
+    // Load user from auth service
+    const loadUser = async () => {
+      if (authService.isAuthenticated()) {
+        try {
+          const currentUser = await authService.getCurrentUser();
+          setUser(currentUser);
+        } catch (error) {
+          console.error('Failed to load user:', error);
+          const cachedUser = authService.getUser();
+          setUser(cachedUser);
+        }
+      }
+    };
+
+    loadUser();
+  }, []);
+
   const navigationItems = [
-    { label: texts.dashboard, path: '/dashboard', icon: 'LayoutDashboard' },
-    { label: texts.documents, path: '/document-upload', icon: 'FileText' },
-    { label: texts.search, path: '/search-results', icon: 'Search' },
-    { label: texts.analytics, path: '/analysis-dashboard', icon: 'BarChart3' },
+    { label: texts.dashboard || 'Dashboard', path: '/dashboard', icon: 'LayoutDashboard' },
+    { label: texts.documents || 'Documents', path: '/document-upload', icon: 'FileText' },
+    { label: texts.clients || 'Clients', path: '/clients', icon: 'Users' },
+    { label: texts.search || 'Search', path: '/search-results', icon: 'Search' },
+    { label: texts.analytics || 'Analytics', path: '/analysis-dashboard', icon: 'BarChart3' },
+    { label: texts.servicePlus || 'Service+', path: '/service-plus', icon: 'Star' },
   ];
+
+  // Filter navigation based on user roles
+  const filteredNavigation = navigationItems.filter(item => {
+    if (item.path === '/service-plus' && !authService.canAccessAdvancedFeatures()) {
+      return false;
+    }
+    return true;
+  });
 
   const isActivePath = (path) => {
     if (path === '/dashboard') {
@@ -44,6 +75,7 @@ const GlobalHeader = () => {
     } else {
       document.body.style.overflow = 'unset';
     }
+
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -52,15 +84,60 @@ const GlobalHeader = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      // Navigate to search results with query
-      window.location.href = `/search-results?q=${encodeURIComponent(searchQuery)}`;
+      navigate(`/search-results?q=${encodeURIComponent(searchQuery)}`);
+      setIsMobileMenuOpen(false);
     }
   };
 
-  const handleLogout = () => {
-    // Handle logout logic
-    localStorage.removeItem('authToken');
-    window.location.href = '/login';
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force logout even if API call fails
+      authService.clearTokens();
+      navigate('/login');
+    }
+  };
+
+  const getUserInitials = () => {
+    if (!user) return '?';
+    if (user.firstName && user.lastName) {
+      return `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+    }
+    if (user.username) {
+      return user.username.substring(0, 2).toUpperCase();
+    }
+    return user.email?.charAt(0).toUpperCase() || '?';
+  };
+
+  const getUserDisplayName = () => {
+    if (!user) return 'User';
+    if (user.firstName && user.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    if (user.username) {
+      return user.username;
+    }
+    return user.email?.split('@')[0] || 'User';
+  };
+
+  const getUserRole = () => {
+    if (!user || !user.roles || user.roles.length === 0) return 'User';
+    return user.roles[0]; // Display primary role
+  };
+
+  const getQuotaPercentage = () => {
+    if (!user || !user.documentQuota || user.documentQuota <= 0) return 0;
+    return Math.min(100, (user.documentsProcessedThisMonth / user.documentQuota) * 100);
+  };
+
+  const getQuotaColor = () => {
+    const percentage = getQuotaPercentage();
+    if (percentage >= 90) return 'bg-red-500';
+    if (percentage >= 75) return 'bg-amber-500';
+    return 'bg-green-500';
   };
 
   return (
@@ -73,17 +150,21 @@ const GlobalHeader = () => {
               <Icon name="Scale" size={20} color="white" />
             </div>
             <span className="font-heading font-semibold text-lg text-primary hidden sm:block">
-              {texts.appName}
+              {texts.appName || 'LegalAnalyzer'}
             </span>
           </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center space-x-1">
-            {navigationItems.map((item) => (
+            {filteredNavigation.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg nav-hover font-medium text-sm ${isActivePath(item.path) ? 'bg-primary text-white' :'text-text-secondary hover:text-text-primary hover:bg-gray-50'}`}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg nav-hover font-medium text-sm transition-colors ${
+                  isActivePath(item.path)
+                    ? 'bg-primary text-white'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
+                }`}
               >
                 <Icon name={item.icon} size={16} />
                 <span>{item.label}</span>
@@ -94,14 +175,14 @@ const GlobalHeader = () => {
           {/* Search Bar - Desktop */}
           <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center flex-1 max-w-md mx-8">
             <div className="relative w-full">
-              <Icon 
-                name="Search" 
-                size={16} 
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" 
+              <Icon
+                name="Search"
+                size={16}
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary"
               />
               <input
                 type="text"
-                placeholder={texts.searchPlaceholder}
+                placeholder={texts.searchPlaceholder || 'Search documents...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent bg-background text-sm"
@@ -113,7 +194,7 @@ const GlobalHeader = () => {
           <div className="flex items-center space-x-4">
             {/* Language Selector */}
             <LanguageSelector />
-            
+
             {/* Mobile Search Icon */}
             <Link
               to="/search-results"
@@ -132,32 +213,115 @@ const GlobalHeader = () => {
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center space-x-2 p-2 text-text-secondary hover:text-text-primary nav-hover rounded-lg"
+                className="flex items-center space-x-2 p-2 text-text-secondary hover:text-text-primary nav-hover rounded-lg transition-colors"
               >
                 <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                  <Icon name="User" size={16} color="white" />
+                  <span className="text-white text-sm font-semibold">{getUserInitials()}</span>
                 </div>
-                <span className="hidden sm:block font-medium text-sm">John Doe</span>
-                <Icon name="ChevronDown" size={16} />
+                <div className="hidden sm:block text-left">
+                  <p className="font-medium text-sm text-text-primary">{getUserDisplayName()}</p>
+                  <p className="text-xs text-text-secondary">{getUserRole()}</p>
+                </div>
+                <Icon name="ChevronDown" size={16} className={`transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {/* User Dropdown */}
               {isUserMenuOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-surface rounded-lg shadow-elevation-3 border border-border-light z-[1010] animate-fade-in">
+                <div className="absolute right-0 mt-2 w-72 bg-surface rounded-lg shadow-elevation-3 border border-border-light z-[1010] animate-fade-in">
                   <div className="py-2">
-                    <div className="px-4 py-2 border-b border-border-light">
-                      <p className="font-medium text-sm text-text-primary">John Doe</p>
-                      <p className="text-xs text-text-secondary">john.doe@lawfirm.com</p>
+                    {/* User Info Section */}
+                    <div className="px-4 py-3 border-b border-border-light">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
+                          <span className="text-white text-lg font-semibold">{getUserInitials()}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-sm text-text-primary">{getUserDisplayName()}</p>
+                          <p className="text-xs text-text-secondary truncate">{user?.email}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Role and Subscription Badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {getUserRole()}
+                        </span>
+                        {user?.subscriptionTier && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            {user.subscriptionTier}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Document Quota Progress */}
+                      {user?.documentQuota && user.documentQuota > 0 && (
+                        <div className="mt-3">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs text-text-secondary">Document Quota</span>
+                            <span className="text-xs font-medium text-text-primary">
+                              {user.documentsProcessedThisMonth}/{user.documentQuota}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                            <div 
+                              className={`h-1.5 rounded-full transition-all ${getQuotaColor()}`}
+                              style={{ width: `${getQuotaPercentage()}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <button className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover">
-                      {texts.accountSettings}
-                    </button>
-                    <button 
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-error hover:bg-red-50 nav-hover"
-                    >
-                      {texts.signOut}
-                    </button>
+                    
+                    {/* Menu Items */}
+                    <div className="py-1">
+                      <Link
+                        to="/profile"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
+                      >
+                        <Icon name="User" size={16} />
+                        {texts.accountSettings || 'Account Settings'}
+                      </Link>
+
+                      <Link
+                        to="/clients"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
+                      >
+                        <Icon name="Users" size={16} />
+                        {texts.clients || 'Clients'}
+                      </Link>
+
+                      {authService.canManageUsers() && (
+                        <Link
+                          to="/admin/users"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
+                        >
+                          <Icon name="Users" size={16} />
+                          User Management
+                        </Link>
+                      )}
+
+                      <Link
+                        to="/settings"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
+                      >
+                        <Icon name="Settings" size={16} />
+                        Settings
+                      </Link>
+
+                      <div className="border-t border-border-light my-1"></div>
+
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-sm text-error hover:bg-red-50 nav-hover flex items-center gap-2 transition-colors"
+                      >
+                        <Icon name="LogOut" size={16} />
+                        {texts.signOut || 'Sign Out'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -177,19 +341,20 @@ const GlobalHeader = () => {
       {/* Mobile Navigation Drawer */}
       {isMobileMenuOpen && (
         <>
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-[1019] lg:hidden"
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-[1019] lg:hidden animate-fade-in"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="fixed top-0 left-0 h-full w-80 bg-surface z-[1020] lg:hidden animate-slide-in shadow-elevation-3">
+          <div className="fixed top-0 left-0 h-full w-80 bg-surface z-[1020] lg:hidden animate-slide-in shadow-elevation-3 overflow-y-auto">
             <div className="p-6">
+              {/* Mobile Header */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-primary rounded flex items-center justify-center">
                     <Icon name="Scale" size={20} color="white" />
                   </div>
                   <span className="font-heading font-semibold text-lg text-primary">
-                    {texts.appName}
+                    {texts.appName || 'LegalAnalyzer'}
                   </span>
                 </div>
                 <button
@@ -208,14 +373,14 @@ const GlobalHeader = () => {
               {/* Mobile Search */}
               <form onSubmit={handleSearchSubmit} className="mb-6">
                 <div className="relative">
-                  <Icon 
-                    name="Search" 
-                    size={16} 
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" 
+                  <Icon
+                    name="Search"
+                    size={16}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary"
                   />
                   <input
                     type="text"
-                    placeholder={texts.searchPlaceholder}
+                    placeholder={texts.searchPlaceholder || 'Search documents...'}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-3 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent bg-background"
@@ -224,13 +389,17 @@ const GlobalHeader = () => {
               </form>
 
               {/* Mobile Navigation */}
-              <nav className="space-y-2">
-                {navigationItems.map((item) => (
+              <nav className="space-y-2 mb-6">
+                {filteredNavigation.map((item) => (
                   <Link
                     key={item.path}
                     to={item.path}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center space-x-3 px-4 py-3 rounded-lg nav-hover font-medium ${isActivePath(item.path) ? 'bg-primary text-white' :'text-text-secondary hover:text-text-primary hover:bg-gray-50'}`}
+                    className={`flex items-center space-x-3 px-4 py-3 rounded-lg nav-hover font-medium transition-colors ${
+                      isActivePath(item.path)
+                        ? 'bg-primary text-white'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-gray-50'
+                    }`}
                   >
                     <Icon name={item.icon} size={20} />
                     <span>{item.label}</span>
@@ -239,24 +408,66 @@ const GlobalHeader = () => {
               </nav>
 
               {/* Mobile User Info */}
-              <div className="mt-8 pt-6 border-t border-border-light">
+              <div className="pt-6 border-t border-border-light">
                 <div className="flex items-center space-x-3 mb-4">
-                  <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-                    <Icon name="User" size={20} color="white" />
+                  <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
+                    <span className="text-white text-lg font-semibold">{getUserInitials()}</span>
                   </div>
-                  <div>
-                    <p className="font-medium text-text-primary">John Doe</p>
-                    <p className="text-sm text-text-secondary">john.doe@lawfirm.com</p>
+                  <div className="flex-1">
+                    <p className="font-medium text-text-primary">{getUserDisplayName()}</p>
+                    <p className="text-sm text-text-secondary truncate">{user?.email}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                        {getUserRole()}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <button className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover rounded-lg mb-2">
-                  {texts.accountSettings}
-                </button>
-                <button 
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-error hover:bg-red-50 nav-hover rounded-lg"
+
+                {/* Document Quota in Mobile */}
+                {user?.documentQuota && user.documentQuota > 0 && (
+                  <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-text-secondary">Document Quota</span>
+                      <span className="text-xs font-medium text-text-primary">
+                        {user.documentsProcessedThisMonth}/{user.documentQuota}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full transition-all ${getQuotaColor()}`}
+                        style={{ width: `${getQuotaPercentage()}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+                
+                <Link
+                  to="/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover rounded-lg mb-2 flex items-center gap-2"
                 >
-                  {texts.signOut}
+                  <Icon name="User" size={16} />
+                  {texts.accountSettings || 'Account Settings'}
+                </Link>
+
+                {authService.canManageUsers() && (
+                  <Link
+                    to="/admin/users"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover rounded-lg mb-2 flex items-center gap-2"
+                  >
+                    <Icon name="Users" size={16} />
+                    User Management
+                  </Link>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-2 text-error hover:bg-red-50 nav-hover rounded-lg flex items-center gap-2"
+                >
+                  <Icon name="LogOut" size={16} />
+                  {texts.signOut || 'Sign Out'}
                 </button>
               </div>
             </div>
