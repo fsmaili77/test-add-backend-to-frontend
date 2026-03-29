@@ -1,4 +1,4 @@
-// legalanalyzer/src/pages/document-upload/index.jsx - Updated with Client Selection
+// legalanalyzer/src/pages/document-upload/index.jsx - Updated with Client Selection & Duplicate Handling
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -9,10 +9,10 @@ import FileDropZone from './components/FileDropZone';
 import FileList from './components/FileList';
 import UploadSettings from './components/UploadSettings';
 import ProgressTracker from './components/ProgressTracker';
-import authService from 'services/authService';
+import { getAuthHeaders, getMultipartAuthHeaders } from 'services/authService';
 import { uploadDocument, batchUploadDocuments, validateFile, checkMicroservicesHealth } from '../../api';
 
-const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5093/api';
 const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:3001';
 
 const DocumentUpload = () => {
@@ -42,7 +42,6 @@ const DocumentUpload = () => {
   const [errors, setErrors] = useState([]);
   const [backendHealth, setBackendHealth] = useState(null);
   const [uploadResults, setUploadResults] = useState([]);
-
   const supportedFormats = ['PDF', 'DOCX', 'TXT', 'DOC'];
   const maxFileSize = 50 * 1024 * 1024; // 50MB
   const maxFiles = 20;
@@ -76,7 +75,7 @@ const DocumentUpload = () => {
     try {
       const response = await axios.get(`${API_URL}/clientmanagement/clients`, {
         params: { isActive: true },
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       setClients(response.data.clients);
     } catch (err) {
@@ -90,13 +89,13 @@ const DocumentUpload = () => {
   const handleFilesSelected = useCallback((newFiles) => {
     const validFiles = [];
     const fileErrors = [];
-
+    
     Array.from(newFiles).forEach((file) => {
       if (selectedFiles.length + validFiles.length >= maxFiles) {
         fileErrors.push(`Maximum ${maxFiles} files allowed`);
         return;
       }
-
+      
       const isDuplicate = selectedFiles.some(existing => 
         existing.name === file.name && existing.size === file.size
       );
@@ -105,7 +104,7 @@ const DocumentUpload = () => {
         fileErrors.push(`Duplicate file: ${file.name}`);
         return;
       }
-
+      
       const fileValidationErrors = validateFile(file);
       if (fileValidationErrors.length === 0) {
         const fileWithId = {
@@ -122,7 +121,7 @@ const DocumentUpload = () => {
         fileErrors.push(`${file.name}: ${fileValidationErrors.join(', ')}`);
       }
     });
-
+    
     setSelectedFiles(prev => [...prev, ...validFiles]);
     if (fileErrors.length > 0) {
       setErrors(prev => [...prev, ...fileErrors]);
@@ -159,16 +158,8 @@ const DocumentUpload = () => {
   };
 
   const startUpload = async () => {
-    if (selectedFiles.length === 0) return;
-    
-    // Validate client selection
-    if (!selectedClientId) {
-      setErrors(['Please select a client before uploading documents']);
-      return;
-    }
-    
-    if (backendHealth?.overall_status === 'unavailable') {
-      setErrors(['Backend service is currently unavailable. Please check your connection and try again.']);
+    if (selectedFiles.length === 0 || !selectedClientId) {
+      setErrors(['Please select a client and at least one file']);
       return;
     }
 
@@ -179,163 +170,43 @@ const DocumentUpload = () => {
     try {
       setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' })));
 
+      let results;
       if (selectedFiles.length === 1) {
-        // Single file upload
         const file = selectedFiles[0];
         const progressInterval = simulateProgress(file.id, 35000);
-        
-        try {
-          // Create FormData with client ID
-          const formData = new FormData();
-          formData.append('file', file.file);
-          formData.append('title', file.name);
-          formData.append('language', uploadSettings.language);
-          formData.append('classification', uploadSettings.classification);
-          formData.append('enableOCR', uploadSettings.enableOCR);
-          formData.append('priority', uploadSettings.priority);
-          formData.append('practiceArea', uploadSettings.practiceArea);
-          formData.append('tags', uploadSettings.customTags);
-          formData.append('clientId', selectedClientId); // Add client ID
 
-          const response = await axios.post(
-            `${PYTHON_API_URL}/analyze`,
-            formData,
-            {
-              headers: {
-                ...authService.getAuthHeaders(),
-                'Content-Type': 'multipart/form-data'
-              }
-            }
-          );
-          
-          clearInterval(progressInterval);
-          setUploadProgress(prev => ({ ...prev, [file.id]: 100 }));
-          setSelectedFiles(prev =>
-            prev.map(f => f.id === file.id ? { ...f, status: 'completed' } : f)
-          );
-          
-          setUploadResults([{
-            filename: file.name,
-            status: 'success',
-            message: 'Document uploaded and analyzed successfully',
-            id: response.data.id
-          }]);
-          
-          console.log('Upload successful:', response.data);
-        } catch (error) {
-          clearInterval(progressInterval);
-          console.error('Upload error:', error);
-          setErrors(prev => [...prev, `Failed to upload ${file.name}: ${error.response?.data?.error || error.message}`]);
-          setSelectedFiles(prev =>
-            prev.map(f => f.id === file.id ? { ...f, status: 'error' } : f)
-          );
-          
-          setUploadResults([{
-            filename: file.name,
-            status: 'failed',
-            error: error.response?.data?.error || error.message
-          }]);
-        }
+        results = [await uploadDocument(
+          file.file,
+          file.name,
+          uploadSettings.language,
+          uploadSettings.classification,
+          uploadSettings.enableOCR,
+          uploadSettings.enableAdvancedAnalysis,
+          selectedClientId
+        )];
+
+        clearInterval(progressInterval);
+        setUploadProgress(prev => ({ ...prev, [file.id]: 100 }));
+        setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, status: 'completed' } : f));
       } else {
-        // Batch upload
-        const progressIntervals = selectedFiles.map(file =>
-          simulateProgress(file.id, 35000)
+        const progressIntervals = selectedFiles.map(file => simulateProgress(file.id, 35000));
+        results = await batchUploadDocuments(
+          selectedFiles.map(f => f.file),
+          selectedFiles.map(f => f.name),
+          selectedFiles.map(() => uploadSettings.language),
+          selectedFiles.map(() => uploadSettings.classification),
+          uploadSettings.enableOCR,
+          uploadSettings.enableAdvancedAnalysis,
+          selectedClientId
         );
-
-        try {
-          const formData = new FormData();
-          
-          // Add all files
-          selectedFiles.forEach(file => {
-            formData.append('files', file.file);
-          });
-          
-          // Add metadata arrays
-          selectedFiles.forEach(file => {
-            formData.append('titles', file.name);
-            formData.append('languages', uploadSettings.language);
-            formData.append('classifications', uploadSettings.classification);
-            formData.append('priorities', uploadSettings.priority);
-            formData.append('practiceAreas', uploadSettings.practiceArea);
-          });
-          
-          formData.append('enableOCR', uploadSettings.enableOCR);
-          formData.append('clientId', selectedClientId); // Add client ID for all files
-
-          const response = await axios.post(
-            `${PYTHON_API_URL}/batch-upload`,
-            formData,
-            {
-              headers: {
-                ...authService.getAuthHeaders(),
-                'Content-Type': 'multipart/form-data'
-              }
-            }
-          );
-
-          progressIntervals.forEach(interval => clearInterval(interval));
-
-          const results = response.data.results || [];
-          const uploadResults = [];
-          let hasErrors = false;
-
-          results.forEach((result, index) => {
-            const fileId = selectedFiles[index]?.id;
-            const filename = selectedFiles[index]?.name;
-
-            if (result.status === 'error') {
-              hasErrors = true;
-              setErrors(prev => [...prev, `${filename}: ${result.error}`]);
-              setSelectedFiles(prev => prev.map(f =>
-                f.id === fileId ? { ...f, status: 'error' } : f
-              ));
-              uploadResults.push({
-                filename,
-                status: 'failed',
-                error: result.error
-              });
-            } else {
-              setUploadProgress(prev => ({ ...prev, [fileId]: 100 }));
-              setSelectedFiles(prev => prev.map(f =>
-                f.id === fileId ? { ...f, status: 'completed' } : f
-              ));
-              uploadResults.push({
-                filename,
-                status: 'success',
-                message: 'Document uploaded and analyzed successfully',
-                id: result.id
-              });
-            }
-          });
-
-          setUploadResults(uploadResults);
-
-          if (!hasErrors) {
-            console.log('Batch upload successful:', results);
-          }
-        } catch (error) {
-          progressIntervals.forEach(interval => clearInterval(interval));
-          console.error('Batch upload error:', error);
-          setErrors(prev => [...prev, `Batch upload failed: ${error.response?.data?.error || error.message}`]);
-          setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
-          
-          setUploadResults(selectedFiles.map(file => ({
-            filename: file.name,
-            status: 'failed',
-            error: error.response?.data?.error || error.message
-          })));
-        }
+        progressIntervals.forEach(i => clearInterval(i));
       }
 
-      if (!uploadSettings.processInBackground) {
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 3000);
-      }
+      setUploadResults(results);
+      if (!uploadSettings.processInBackground) setTimeout(() => navigate('/dashboard'), 3000);
     } catch (error) {
-      console.error('Upload process error:', error);
-      setErrors(prev => [...prev, 'Upload failed. Please check your connection and try again.']);
-      setSelectedFiles(prev => prev.map(f => ({ ...f, status: 'error' })));
+      console.error('Upload error:', error);
+      setErrors([error.message || 'Upload failed']);
     } finally {
       setIsUploading(false);
     }
@@ -490,17 +361,49 @@ const DocumentUpload = () => {
 
           {/* Upload Results */}
           {uploadResults.length > 0 && !isUploading && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className={`mb-6 p-4 border rounded-lg ${
+              uploadResults.some(r => r.status === 'duplicate') 
+                ? 'bg-amber-50 border-amber-200' 
+                : uploadResults.some(r => r.status === 'failed')
+                ? 'bg-red-50 border-red-200'
+                : 'bg-blue-50 border-blue-200'
+            }`}>
               <div className="flex items-start space-x-2">
-                <Icon name="CheckCircle" size={20} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                <Icon 
+                  name={
+                    uploadResults.some(r => r.status === 'duplicate') ? 'Info' :
+                    uploadResults.some(r => r.status === 'failed') ? 'XCircle' : 'CheckCircle'
+                  } 
+                  size={20} 
+                  className={`mt-0.5 flex-shrink-0 ${
+                    uploadResults.some(r => r.status === 'duplicate') ? 'text-amber-600' :
+                    uploadResults.some(r => r.status === 'failed') ? 'text-red-600' : 'text-blue-600'
+                  }`} 
+                />
                 <div className="flex-1">
-                  <h3 className="font-medium text-blue-800 mb-2">Upload Complete</h3>
+                  <h3 className={`font-medium mb-2 ${
+                    uploadResults.some(r => r.status === 'duplicate') ? 'text-amber-800' :
+                    uploadResults.some(r => r.status === 'failed') ? 'text-red-800' : 'text-blue-800'
+                  }`}>
+                    {uploadResults.some(r => r.status === 'duplicate') 
+                      ? 'Upload Complete with Duplicates' 
+                      : uploadResults.some(r => r.status === 'failed')
+                      ? 'Upload Complete with Errors'
+                      : 'Upload Complete'}
+                  </h3>
                   <div className="space-y-1">
                     {uploadResults.map((result, index) => (
                       <div key={index} className="text-sm">
                         <span className="font-medium">{result.filename}</span>: {' '}
-                        <span className={result.status === 'success' ? 'text-green-700' : 'text-red-700'}>
-                          {result.status === 'success' ? result.message : result.error}
+                        <span className={
+                          result.status === 'success' ? 'text-green-700' : 
+                          result.status === 'duplicate' ? 'text-amber-700' : 'text-red-700'
+                        }>
+                          {result.status === 'duplicate' 
+                            ? result.message || 'Document already exists for this client'
+                            : result.status === 'success' 
+                            ? result.message 
+                            : result.error}
                         </span>
                       </div>
                     ))}
@@ -525,7 +428,6 @@ const DocumentUpload = () => {
                 isUploading={isUploading}
                 backendStatus={backendHealth?.overall_status}
               />
-
               {selectedFiles.length > 0 && (
                 <FileList
                   files={selectedFiles}
@@ -534,7 +436,6 @@ const DocumentUpload = () => {
                   isUploading={isUploading}
                 />
               )}
-
               {isUploading && (
                 <ProgressTracker
                   totalProgress={getTotalProgress()}
@@ -553,7 +454,7 @@ const DocumentUpload = () => {
                 isUploading={isUploading}
                 backendHealth={backendHealth}
               />
-
+              
               {/* Gemini AI Analysis Info */}
               <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
                 <div className="flex items-start space-x-2">
@@ -576,7 +477,7 @@ const DocumentUpload = () => {
                   </div>
                 </div>
               </div>
-
+              
               {/* OCR Capability Info */}
               {uploadSettings.enableOCR && (
                 <div className="bg-green-50 rounded-lg border border-green-200 p-4">
@@ -599,7 +500,7 @@ const DocumentUpload = () => {
                   </div>
                 </div>
               )}
-
+              
               {/* Upload Action */}
               <div className="bg-surface rounded-lg border border-border-light p-6">
                 <h3 className="font-semibold text-text-primary mb-4">Upload Summary</h3>
@@ -647,7 +548,6 @@ const DocumentUpload = () => {
                     </div>
                   )}
                 </div>
-
                 <div className="space-y-3">
                   <button
                     onClick={startUpload}
@@ -680,7 +580,6 @@ const DocumentUpload = () => {
                       </div>
                     )}
                   </button>
-
                   {selectedFiles.length > 0 && !isUploading && (
                     <button
                       onClick={resetUpload}
@@ -690,7 +589,6 @@ const DocumentUpload = () => {
                     </button>
                   )}
                 </div>
-
                 {selectedFiles.length > 0 && !isUploading && selectedClientId && backendHealth?.overall_status === 'healthy' && (
                   <p className="text-xs text-text-secondary mt-2 text-center">
                     Files will be processed with Gemini AI analysis automatically

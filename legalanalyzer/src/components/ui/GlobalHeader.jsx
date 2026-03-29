@@ -4,7 +4,41 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Icon from '../AppIcon';
 import LanguageSelector from '../LanguageSelector';
 import { useLanguage } from '../../contexts/LanguageContext';
-import authService from '../../services/authService';
+import { 
+  isAuthenticated, 
+  getCurrentUser, 
+  logout as authLogout,
+  getUserRole as getRole
+} from '../../services/authService';
+
+// Helper functions
+const canAccessAdvancedFeatures = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  if (!token) return false;
+  
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const tier = payload['subscriptionTier'] || 'Free';
+    const roles = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] || [];
+    return tier === 'Professional' || tier === 'Enterprise' || roles.includes('Admin') || roles.includes('Manager');
+  } catch {
+    return false;
+  }
+};
+
+const canManageUsers = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  if (!token) return false;
+  
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const role = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+    const roles = Array.isArray(role) ? role : [role];
+    return roles.includes('Admin') || roles.includes('Manager');
+  } catch {
+    return false;
+  }
+};
 
 const GlobalHeader = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -17,16 +51,13 @@ const GlobalHeader = () => {
   const { texts } = useLanguage();
 
   useEffect(() => {
-    // Load user from auth service
     const loadUser = async () => {
-      if (authService.isAuthenticated()) {
+      if (isAuthenticated()) {
         try {
-          const currentUser = await authService.getCurrentUser();
+          const currentUser = await getCurrentUser();
           setUser(currentUser);
         } catch (error) {
           console.error('Failed to load user:', error);
-          const cachedUser = authService.getUser();
-          setUser(cachedUser);
         }
       }
     };
@@ -43,9 +74,8 @@ const GlobalHeader = () => {
     { label: texts.servicePlus || 'Service+', path: '/service-plus', icon: 'Star' },
   ];
 
-  // Filter navigation based on user roles
   const filteredNavigation = navigationItems.filter(item => {
-    if (item.path === '/service-plus' && !authService.canAccessAdvancedFeatures()) {
+    if (item.path === '/service-plus' && !canAccessAdvancedFeatures()) {
       return false;
     }
     return true;
@@ -91,12 +121,13 @@ const GlobalHeader = () => {
 
   const handleLogout = async () => {
     try {
-      await authService.logout();
+      await authLogout();
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
-      // Force logout even if API call fails
-      authService.clearTokens();
+      localStorage.removeItem('token');
+      localStorage.removeItem('selectedClientId');
+      sessionStorage.clear();
       navigate('/login');
     }
   };
@@ -125,7 +156,7 @@ const GlobalHeader = () => {
 
   const getUserRole = () => {
     if (!user || !user.roles || user.roles.length === 0) return 'User';
-    return user.roles[0]; // Display primary role
+    return user.roles[0];
   };
 
   const getQuotaPercentage = () => {
@@ -144,7 +175,6 @@ const GlobalHeader = () => {
     <>
       <header className="fixed top-0 left-0 right-0 bg-surface border-b border-border-light z-[1000]">
         <div className="px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
           <Link to="/dashboard" className="flex items-center space-x-3 nav-hover rounded-lg px-2 py-1">
             <div className="w-8 h-8 bg-primary rounded flex items-center justify-center">
               <Icon name="Scale" size={20} color="white" />
@@ -154,7 +184,6 @@ const GlobalHeader = () => {
             </span>
           </Link>
 
-          {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center space-x-1">
             {filteredNavigation.map((item) => (
               <Link
@@ -172,7 +201,6 @@ const GlobalHeader = () => {
             ))}
           </nav>
 
-          {/* Search Bar - Desktop */}
           <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center flex-1 max-w-md mx-8">
             <div className="relative w-full">
               <Icon
@@ -190,12 +218,9 @@ const GlobalHeader = () => {
             </div>
           </form>
 
-          {/* Right Side Actions */}
           <div className="flex items-center space-x-4">
-            {/* Language Selector */}
             <LanguageSelector />
 
-            {/* Mobile Search Icon */}
             <Link
               to="/search-results"
               className="md:hidden p-2 text-text-secondary hover:text-text-primary nav-hover rounded-lg"
@@ -203,13 +228,11 @@ const GlobalHeader = () => {
               <Icon name="Search" size={20} />
             </Link>
 
-            {/* Notifications */}
             <button className="p-2 text-text-secondary hover:text-text-primary nav-hover rounded-lg relative">
               <Icon name="Bell" size={20} />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-error rounded-full"></span>
             </button>
 
-            {/* User Menu */}
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -225,11 +248,9 @@ const GlobalHeader = () => {
                 <Icon name="ChevronDown" size={16} className={`transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
               </button>
 
-              {/* User Dropdown */}
               {isUserMenuOpen && (
                 <div className="absolute right-0 mt-2 w-72 bg-surface rounded-lg shadow-elevation-3 border border-border-light z-[1010] animate-fade-in">
                   <div className="py-2">
-                    {/* User Info Section */}
                     <div className="px-4 py-3 border-b border-border-light">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
@@ -241,7 +262,6 @@ const GlobalHeader = () => {
                         </div>
                       </div>
                       
-                      {/* Role and Subscription Badges */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                           {getUserRole()}
@@ -253,7 +273,6 @@ const GlobalHeader = () => {
                         )}
                       </div>
 
-                      {/* Document Quota Progress */}
                       {user?.documentQuota && user.documentQuota > 0 && (
                         <div className="mt-3">
                           <div className="flex justify-between items-center mb-1">
@@ -272,7 +291,6 @@ const GlobalHeader = () => {
                       )}
                     </div>
                     
-                    {/* Menu Items */}
                     <div className="py-1">
                       <Link
                         to="/profile"
@@ -292,7 +310,7 @@ const GlobalHeader = () => {
                         {texts.clients || 'Clients'}
                       </Link>
 
-                      {authService.canManageUsers() && (
+                      {canManageUsers() && (
                         <Link
                           to="/admin/users"
                           onClick={() => setIsUserMenuOpen(false)}
@@ -327,7 +345,6 @@ const GlobalHeader = () => {
               )}
             </div>
 
-            {/* Mobile Menu Button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 text-text-secondary hover:text-text-primary nav-hover rounded-lg"
@@ -338,7 +355,6 @@ const GlobalHeader = () => {
         </div>
       </header>
 
-      {/* Mobile Navigation Drawer */}
       {isMobileMenuOpen && (
         <>
           <div
@@ -347,7 +363,6 @@ const GlobalHeader = () => {
           />
           <div className="fixed top-0 left-0 h-full w-80 bg-surface z-[1020] lg:hidden animate-slide-in shadow-elevation-3 overflow-y-auto">
             <div className="p-6">
-              {/* Mobile Header */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-primary rounded flex items-center justify-center">
@@ -365,12 +380,10 @@ const GlobalHeader = () => {
                 </button>
               </div>
 
-              {/* Language Selector in Mobile Menu */}
               <div className="mb-4">
                 <LanguageSelector />
               </div>
 
-              {/* Mobile Search */}
               <form onSubmit={handleSearchSubmit} className="mb-6">
                 <div className="relative">
                   <Icon
@@ -388,7 +401,6 @@ const GlobalHeader = () => {
                 </div>
               </form>
 
-              {/* Mobile Navigation */}
               <nav className="space-y-2 mb-6">
                 {filteredNavigation.map((item) => (
                   <Link
@@ -407,7 +419,6 @@ const GlobalHeader = () => {
                 ))}
               </nav>
 
-              {/* Mobile User Info */}
               <div className="pt-6 border-t border-border-light">
                 <div className="flex items-center space-x-3 mb-4">
                   <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
@@ -424,7 +435,6 @@ const GlobalHeader = () => {
                   </div>
                 </div>
 
-                {/* Document Quota in Mobile */}
                 {user?.documentQuota && user.documentQuota > 0 && (
                   <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
@@ -451,7 +461,7 @@ const GlobalHeader = () => {
                   {texts.accountSettings || 'Account Settings'}
                 </Link>
 
-                {authService.canManageUsers() && (
+                {canManageUsers() && (
                   <Link
                     to="/admin/users"
                     onClick={() => setIsMobileMenuOpen(false)}

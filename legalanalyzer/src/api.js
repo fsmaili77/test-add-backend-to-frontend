@@ -1,36 +1,39 @@
-// src/api.js - Complete with Authentication Support
-import authService from './services/authService';
+// src/api.js - Complete with Client Isolation, Duplicate Handling & Auth Support
 
-const API_BASE_URL = window.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : '/api');
+// Use Vite environment variables consistently
+const API_BASE_URL = import.meta.env.VITE_PYTHON_API_URL || 
+                    (import.meta.env.DEV ? 'http://localhost:3001' : '/api');
+const AUTH_BASE_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5093/api';
 
-// Helper function to get auth headers
-const getAuthHeaders = () => {
-  const headers = {
-    'Accept': 'application/json',
-  };
-  
-  // Add authorization token if available
-  const authHeaders = authService.getAuthHeaders();
-  console.log('Using auth headers:', authHeaders);
-  if (authHeaders.Authorization) {
-    headers.Authorization = authHeaders.Authorization;
-  }
-  
-  return headers;
+// Helper: Get auth headers for JSON requests (includes Content-Type)
+export const getAuthHeaders = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  return token 
+    ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
 };
 
-// Helper function to handle API responses
+// 🔥 NEW: Get auth headers for multipart/form-data requests (NO Content-Type!)
+export const getMultipartAuthHeaders = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  // ✅ Return ONLY Authorization - let browser/axios set Content-Type with boundary
+  return token 
+    ? { 'Authorization': `Bearer ${token}` }
+    : {};
+};
+
+// Helper: Handle API responses with proper error parsing
 const handleResponse = async (response) => {
   if (!response.ok) {
     // Handle authentication errors
     if (response.status === 401) {
       // Token expired or invalid - try to refresh
       try {
-        await authService.refreshAccessToken();
-        throw new Error('AUTH_RETRY'); // Signal to retry the request
-      } catch (refreshError) {
+        await refreshAccessToken();
+        throw new Error('AUTH_RETRY');  // Signal to retry the request
+      } catch {
         // Refresh failed - redirect to login
-        authService.logout();
+        logout();
         window.location.href = '/login';
         throw new Error('Authentication required. Please log in again.');
       }
@@ -56,609 +59,379 @@ const handleResponse = async (response) => {
   return response.json();
 };
 
-// Helper function to format file size
-export const formatFileSize = (bytes) => {
-  if (!bytes || bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
+// ✅ FIX #1: Get all documents with optional clientId and other filters
+export const getDocuments = async (filters = {}) => {
+  const params = new URLSearchParams();
+  
+  // ✅ Add clientId filter for client isolation
+  if (filters.clientId) params.append('clientId', String(filters.clientId).trim());
+  if (filters.status && filters.status !== 'all') params.append('status', filters.status);
+  if (filters.documentType && filters.documentType !== 'all') params.append('documentType', filters.documentType);
+  if (filters.practiceArea && filters.practiceArea !== 'all') params.append('practiceArea', filters.practiceArea);
+  if (filters.priority && filters.priority !== 'all') params.append('priority', filters.priority);
+  if (filters.dateRange && filters.dateRange !== 'all') params.append('dateRange', filters.dateRange);
+  if (filters.needsReview !== undefined && filters.needsReview !== 'all') params.append('needsReview', filters.needsReview);
 
-// Helper function to generate fallback content if extracted_text is empty
-const generateFallbackContent = (case_item) => {
-  const sections = [];
-  sections.push(`DOCUMENT: ${case_item.filename || 'Unknown'}`);
-  sections.push('=' + '='.repeat((case_item.filename || 'Unknown').length + 9));
-  sections.push('');
+  const queryString = params.toString();
+  const url = `${API_BASE_URL}/documents${queryString ? `?${queryString}` : ''}`;
   
-  if (case_item.file_size) {
-    sections.push(`File Size: ${formatFileSize(case_item.file_size)}`);
-    sections.push('');
-  }
+  const response = await fetch(url, { headers: getAuthHeaders() });
   
-  if (case_item.practice_area) {
-    sections.push(`Practice Area: ${case_item.practice_area}`);
-    sections.push('');
-  }
-  
-  if (case_item.priority) {
-    sections.push(`Priority: ${case_item.priority.toUpperCase()}`);
-    sections.push('');
-  }
-  
-  if (case_item.summary) {
-    sections.push('SUMMARY');
-    sections.push('-------');
-    sections.push(case_item.summary);
-    sections.push('');
-  }
-  
-  if (case_item.parties) {
-    sections.push('PARTIES');
-    sections.push('-------');
-    case_item.parties.split(',').forEach(party => {
-      sections.push(`• ${party.trim()}`);
-    });
-    sections.push('');
-  }
-  
-  if (case_item.court) {
-    sections.push('COURT INFORMATION');
-    sections.push('-----------------');
-    sections.push(`Court: ${case_item.court}`);
-    sections.push('');
-  }
-  
-  if (case_item.document_date) {
-    sections.push('DOCUMENT DATE');
-    sections.push('-------------');
-    sections.push(`Date: ${case_item.document_date}`);
-    sections.push('');
-  }
-  
-  if (case_item.arguments && case_item.arguments.includes('||')) {
-    const args = case_item.arguments.split('||');
-    sections.push('KEY ARGUMENTS');
-    sections.push('-------------');
-    args.forEach((arg, index) => {
-      sections.push(`${index + 1}. ${arg}`);
-    });
-    sections.push('');
-  }
-  
-  if (case_item.document_language) {
-    sections.push('LANGUAGE');
-    sections.push('--------');
-    sections.push(`Document Language: ${case_item.document_language}`);
-    sections.push('');
-  }
-  
-  sections.push('ANALYSIS STATUS');
-  sections.push('---------------');
-  sections.push(`Status: ${case_item.status}`);
-  sections.push(`Analysis Engine: Google Gemini AI`);
-  sections.push(`Document Type: ${case_item.document_type || 'Unknown'}`);
-  
-  if (case_item.confidence_score !== undefined) {
-    sections.push(`Confidence Score: ${(case_item.confidence_score * 100).toFixed(1)}%`);
-  }
-  
-  if (case_item.analysis_duration_ms) {
-    sections.push(`Analysis Duration: ${case_item.analysis_duration_ms}ms`);
-  }
-  
-  sections.push('');
-  sections.push('NOTE: This is a generated preview. The original extracted text may be available through the Python backend.');
-  
-  return sections.join('\n');
-};
+  const cases = await handleResponse(response);
 
-// Get all documents with authentication
-export const getDocuments = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    const cases = await handleResponse(response);
-    
-    // Map Python backend response to frontend format
-    return cases.map(case_item => ({
+  return cases.map(case_item => {
+    // Robust arguments handling (backend may return string with || or array)
+    let argumentsArray = [];
+    if (case_item.arguments) {
+      if (Array.isArray(case_item.arguments)) {
+        argumentsArray = case_item.arguments;
+      } else if (typeof case_item.arguments === 'string') {
+        argumentsArray = case_item.arguments.split('||').map(a => a.trim()).filter(Boolean);
+      }
+    }
+
+    return {
       id: case_item.id,
-      title: case_item.title || case_item.filename,
+      title: case_item.filename,
       filename: case_item.filename,
       uploadedAt: case_item.creation_date,
-      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
+      status: case_item.status || 'Pending',
       type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0,
-      fileSize: case_item.file_size || 0,
-      fileSizeFormatted: formatFileSize(case_item.file_size),
-      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
+      size: case_item.file_size || case_item.size || null,
+      fileExtension: case_item.filename ? case_item.filename.split('.').pop() : 'unknown',
       summary: case_item.summary,
       parties: case_item.parties,
       court: case_item.court,
       document_date: case_item.document_date,
-      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
+      arguments: argumentsArray,                    // ← normalized to array
       document_language: case_item.document_language,
-      analysis_duration_ms: case_item.analysis_duration_ms,
-      classification: case_item.classification,
       practice_area: case_item.practice_area,
       priority: case_item.priority,
       confidence_score: case_item.confidence_score,
       needs_review: case_item.needs_review,
-      tags: case_item.tags,
-      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
-      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
-      extractedInfo: {
-        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
-          name: p.trim(),
-          role: 'Unknown',
-          type: 'Entity'
-        })) : [],
-        keyDates: case_item.document_date ? [{
-          description: 'Document Date',
-          date: case_item.document_date
-        }] : [],
-        financialTerms: [],
-        riskAssessment: {
-          overall: 'Unknown',
-          factors: []
-        }
+      client_id: case_item.client_id,
+      user_id: case_item.user_id,
+    // For compatibility with frontend expectations
+    extractedInfo: {
+      parties: case_item.parties ? case_item.parties.split(',').map(p => ({
+        name: p.trim(),
+        role: 'Unknown',
+        type: 'Entity'
+      })) : [],
+      keyDates: case_item.document_date ? [{
+        description: 'Document Date',
+        date: case_item.document_date
+      }] : [],
+      financialTerms: [],
+      riskAssessment: {
+        overall: 'Unknown',
+        factors: []
       }
-    }));
-  } catch (error) {
-    console.error('Error fetching documents:', error);
-    throw error;
-  }
-};
-
-// Get document by ID with extracted text content
-export const getDocumentById = async (id) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    const case_item = await handleResponse(response);
-    
-    const document = {
-      id: case_item.id,
-      title: case_item.title || case_item.filename,
-      filename: case_item.filename,
-      uploadedAt: case_item.creation_date,
-      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
-      type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0,
-      fileSize: case_item.file_size || 0,
-      fileSizeFormatted: formatFileSize(case_item.file_size),
-      fileExtension: case_item.filename ? case_item.filename.split('.').pop().toUpperCase() : 'unknown',
-      summary: case_item.summary,
-      parties: case_item.parties,
-      court: case_item.court,
-      document_date: case_item.document_date,
-      arguments: case_item.arguments ? case_item.arguments.split('||') : [],
-      document_language: case_item.document_language,
-      analysis_duration_ms: case_item.analysis_duration_ms,
-      classification: case_item.classification,
-      practice_area: case_item.practice_area,
-      priority: case_item.priority,
-      confidence_score: case_item.confidence_score,
-      needs_review: case_item.needs_review,
-      tags: case_item.tags,
-      content: case_item.extracted_text || generateFallbackContent(case_item),
-      rawText: case_item.extracted_text,
-      pages: 1,
-      hasAdvancedAnalysis: case_item.status === 'Analyzed' && !!case_item.summary,
-      analysisProgress: case_item.status === 'Analyzed' ? 100 : 0,
-      extractedInfo: {
-        parties: case_item.parties ? case_item.parties.split(',').map(p => ({
-          name: p.trim(),
-          role: 'Unknown',
-          type: 'Entity'
-        })) : [],
-        keyDates: case_item.document_date ? [{
-          description: 'Document Date',
-          date: case_item.document_date
-        }] : [],
-        financialTerms: [],
-        riskAssessment: {
-          overall: 'Unknown',
-          factors: []
-        }
-      }
+    }
     };
-    
-    return document;
-  } catch (error) {
-    console.error('Error fetching document by ID:', error);
-    throw error;
-  }
+  });
 };
 
-// Get extracted text specifically for a document
-export const getDocumentText = async (id) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}/text`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Error fetching document text:', error);
-    throw error;
+// ✅ FIXED: getDocumentById with robust arguments parsing
+export const getDocumentById = async (id, clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/cases/${id}${params}`, {
+    headers: getAuthHeaders()
+  });
+
+  let document = await handleResponse(response);
+  if (!document) throw new Error('Document not found');
+
+  // 🔥 ROBUST arguments handling
+  let argumentsArray = [];
+  if (document.arguments) {
+    if (Array.isArray(document.arguments)) argumentsArray = document.arguments;
+    else if (typeof document.arguments === 'string') {
+      argumentsArray = document.arguments.split('||').map(a => a.trim()).filter(Boolean);
+    }
   }
+
+  const mockContent = `Document: ${document.filename}\n\n` +
+    `Summary: ${document.summary || 'No summary available'}\n\n` +
+    `Parties: ${document.parties || 'Not identified'}\n\n` +
+    `Court: ${document.court || 'Not specified'}\n\n` +
+    `Document Date: ${document.document_date || 'Not specified'}\n\n` +
+    `Arguments:\n${argumentsArray.map((arg, i) => `${i + 1}. ${arg}`).join('\n') || 'No arguments extracted yet.'}`;
+
+  return {
+    ...document,
+    arguments: argumentsArray,           // normalized
+    content: mockContent,
+    fileSize: document.file_size || document.size || null,
+    size: document.file_size || document.size || null
+  };
 };
 
-// Upload document with authentication
-export const uploadDocument = async (file, title, language = 'en', classification = 'auto', enableOCR = true, enableAdvancedAnalysis = true, priority = 'normal', practiceArea = '', tags = '') => {
+// ✅ FIX #2: Upload document with duplicate handling and proper auth headers
+export const uploadDocument = async (file, title, language, classification, enableOCR, enableAdvancedAnalysis = true, clientId = null) => {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('title', title);
+  formData.append('language', language || 'en');
+  formData.append('classification', classification || 'auto');
   
-  if (title && title !== file.name) {
-    formData.append('title', title);
-  }
-  if (language !== 'en') {
-    formData.append('language', language);
-  }
-  if (classification !== 'auto') {
-    formData.append('classification', classification);
-  }
-  if (!enableOCR) {
-    formData.append('enableOCR', 'false');
-  }
-  if (priority !== 'normal') {
-    formData.append('priority', priority);
-  }
-  if (practiceArea) {
-    formData.append('practiceArea', practiceArea);
-  }
-  if (tags) {
-    formData.append('tags', tags);
-  }
-
-  try {
-    const headers = {};
-    const authHeaders = authService.getAuthHeaders();
-    if (authHeaders.Authorization) {
-      headers.Authorization = authHeaders.Authorization;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/analyze`, {
-      method: 'POST',
-      headers: headers, // Don't set Content-Type - browser will set it with boundary for FormData
-      body: formData,
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Authentication required. Please log in.');
-      }
-      if (response.status === 403) {
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.quota_exceeded) {
-          throw new Error(`Quota exceeded: You have used ${errorData.processed}/${errorData.quota} documents this month.`);
-        }
-        throw new Error('You do not have permission to upload documents.');
-      }
-      if (response.status === 503) {
-        throw new Error('AI service is temporarily unavailable. Please try again later.');
-      } else if (response.status === 500) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Analysis failed due to server error.');
-      } else if (response.status === 413) {
-        throw new Error('File too large. Maximum size is 50MB.');
-      } else if (response.status === 415) {
-        throw new Error('Unsupported file format. Please use PDF, DOCX, or TXT files.');
-      } else {
-        throw new Error(`Upload failed with status: ${response.status}`);
-      }
-    }
-
-    const result = await response.json();
-    return {
-      id: result.id || result.case_id,
-      status: 'success',
-      message: result.message || 'Document uploaded and analyzed successfully',
-      filename: file.name,
-      fileSize: result.file_size || file.size,
-      analysis_duration_ms: result.analysis_duration_ms,
-      practice_area: result.practice_area,
-      priority: result.priority,
-      confidence_score: result.confidence_score,
-      analysis: result
-    };
-  } catch (error) {
-    console.error('Upload error:', error);
-    throw error;
-  }
-};
-
-// Batch upload documents with authentication
-export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR = true, enableAdvancedAnalysis = true, priorities = [], practiceAreas = []) => {
-  const formData = new FormData();
+  // ✅ FIX: Convert boolean to string for FormData
+  formData.append('enableOCR', enableOCR ? 'true' : 'false');
   
-  // Add all files
-  files.forEach((file, index) => {
-    formData.append('files', file);
+  // Add clientId for proper document association
+  if (clientId) {
+    formData.append('clientId', String(clientId).trim());
+  }
+  
+  // ✅ IMPORTANT: Do NOT set 'Content-Type' header manually for FormData
+  // axios/fetch will automatically set it with the correct boundary
+  const response = await fetch(`${API_BASE_URL}/analyze`, {
+    method: 'POST',
+    headers: getMultipartAuthHeaders(),  // ✅ NO 'Content-Type' - let browser set it
+    body: formData,
   });
   
-  // Add metadata arrays
-  titles.forEach(title => formData.append('titles', title));
-  languages.forEach(lang => formData.append('languages', lang));
-  classifications.forEach(cls => formData.append('classifications', cls));
-  priorities.forEach(priority => formData.append('priorities', priority));
-  practiceAreas.forEach(area => formData.append('practiceAreas', area));
-  formData.append('enableOCR', enableOCR.toString());
+  const result = await handleResponse(response);
   
-  try {
-    const headers = {};
-    const authHeaders = authService.getAuthHeaders();
-    if (authHeaders.Authorization) {
-      headers.Authorization = authHeaders.Authorization;
+  // ✅ Handle duplicate status from backend
+  if (result.status === 'duplicate') {
+    return {
+      ...result,
+      isDuplicate: true,
+      message: result.message || `Document '${file.name}' already exists for this client`
+    };
+  }
+  // 🔥 AUTO-ANALYZE if still Processing/Pending (fixes manual Analyze button requirement)
+  if (result.id && (result.status === 'Processing' || result.status === 'Pending')) {
+    try {
+      await analyzeDocument(result.id, enableAdvancedAnalysis, clientId);
+    } catch (e) {
+      console.warn('Auto-analysis after upload failed (user can still trigger manually):', e);
     }
-
-    const response = await fetch(`${API_BASE_URL}/batch-upload`, {
-      method: 'POST',
-      headers: headers,
-      body: formData,
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Batch upload error:', error);
-    throw error;
   }
+  
+  return result;
 };
 
-// Delete document with authentication
-export const deleteDocument = async (id) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/cases/${id}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-
-    if (response.ok) {
-      return await response.json();
-    } else if (response.status === 404) {
-      throw new Error('Document not found');
-    } else if (response.status === 403) {
-      throw new Error('You do not have permission to delete this document');
-    } else {
-      throw new Error('Failed to delete document');
+// Batch upload documents with client isolation
+export const batchUploadDocuments = async (files, titles, languages, classifications, enableOCR, enableAdvancedAnalysis = true, clientId = null) => {
+  const results = [];
+  
+  // Process files sequentially since Python backend doesn't have true batch endpoint
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const result = await uploadDocument(
+        files[i],
+        titles[i],
+        languages[i],
+        classifications[i],
+        enableOCR,
+        enableAdvancedAnalysis,
+        clientId  // Pass clientId to each upload
+      );
+      results.push(result);
+    } catch (error) {
+      results.push({ 
+        error: error.message, 
+        filename: files[i].name,
+        status: 'failed'
+      });
     }
-  } catch (error) {
-    console.error('Delete error:', error);
-    throw error;
   }
+  
+  return results;
 };
 
-// Analyze existing document (re-analysis) with authentication
-export const analyzeDocument = async (documentId, useAdvancedAnalysis = true) => {
-  try {
-    console.log(`Starting re-analysis for document ID: ${documentId}`);
-    
-    const response = await fetch(`${API_BASE_URL}/cases/${documentId}/reanalyze`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    
-    console.log(`Re-analysis response status: ${response.status}`);
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log('Re-analysis successful:', result);
-      return result;
-    } else if (response.status === 404) {
-      throw new Error('Document not found');
-    } else if (response.status === 403) {
-      throw new Error('You do not have permission to analyze this document');
-    } else if (response.status === 500) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Re-analysis failed due to server error');
-    } else {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`Failed to re-analyze document: ${response.status} - ${errorText}`);
+// Delete document (calls Python backend endpoint)
+export const deleteDocument = async (id, clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/cases/${id}${params}`, {
+    method: 'DELETE',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
     }
-  } catch (error) {
-    console.error('Re-analysis error:', error);
-    throw error;
-  }
+  });
+  
+  return handleResponse(response);
 };
 
-// Search documents with authentication
-export const searchDocuments = async (keyword) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/search?keyword=${encodeURIComponent(keyword)}`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    const cases = await handleResponse(response);
-    
-    return cases.map(case_item => ({
-      id: case_item.id,
-      title: case_item.title || case_item.filename,
-      filename: case_item.filename,
-      uploadedAt: case_item.creation_date,
-      status: case_item.status === 'Analyzed' ? 'Analyzed' : case_item.status || 'Pending',
-      type: case_item.document_type || 'unknown',
-      size: case_item.file_size || 0,
-      fileSizeFormatted: formatFileSize(case_item.file_size),
-      summary: case_item.summary,
-      parties: case_item.parties,
-      court: case_item.court,
-      practice_area: case_item.practice_area,
-      priority: case_item.priority,
-      snippet: case_item.summary ? case_item.summary.substring(0, 200) + '...' : '',
-      relevanceScore: 0.95
-    }));
-  } catch (error) {
-    console.error('Search error:', error);
-    throw error;
-  }
+// Analyze/re-analyze existing document
+export const analyzeDocument = async (documentId, useAdvancedAnalysis = true, clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/cases/${documentId}/reanalyze${params}`, {
+    method: 'POST',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ useAdvancedAnalysis })
+  });
+  
+  return handleResponse(response);
 };
 
-// Get trends with authentication
-export const getTrends = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/trends`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Trends error:', error);
-    throw error;
+// Search documents with client isolation
+export const searchDocuments = async (keyword, filters = {}) => {
+  const params = new URLSearchParams();
+  params.append('keyword', keyword);
+  
+  // ✅ Add clientId for search isolation
+  if (filters.clientId) {
+    const clientIdValue = String(filters.clientId).trim();
+    if (clientIdValue && !['null', 'undefined', ''].includes(clientIdValue)) {
+      params.append('clientId', clientIdValue);
+    }
   }
+  
+  const queryString = params.toString();
+  const response = await fetch(`${API_BASE_URL}/search?${queryString}`, {
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  const cases = await handleResponse(response);
+  
+  // Map to frontend format
+  return cases.map(case_item => ({
+    id: case_item.id,
+    title: case_item.filename,
+    filename: case_item.filename,
+    uploadedAt: case_item.creation_date,
+    status: case_item.status || 'Pending',
+    type: case_item.document_type || 'unknown',
+    summary: case_item.summary,
+    parties: case_item.parties,
+    court: case_item.court,
+    client_id: case_item.client_id
+  }));
 };
 
-// Get analytics with authentication
-export const getAnalytics = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/analytics`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Analytics error:', error);
-    throw error;
-  }
+// Get analytics with optional client filter
+export const getAnalytics = async (clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/analytics${params}`, {
+    headers: getAuthHeaders()
+  });
+  return handleResponse(response);
 };
 
-// Extract text only with authentication
+// Get trends with optional client filter
+export const getTrends = async (clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/trends${params}`, {
+    headers: getAuthHeaders()
+  });
+  return handleResponse(response);
+};
+
+// Extract text only (no analysis)
 export const extractText = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
   
-  try {
-    const headers = {};
-    const authHeaders = authService.getAuthHeaders();
-    if (authHeaders.Authorization) {
-      headers.Authorization = authHeaders.Authorization;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/extract-text`, {
-      method: 'POST',
-      headers: headers,
-      body: formData,
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Text extraction error:', error);
-    throw new Error('Failed to extract text from document');
-  }
+  const response = await fetch(`${API_BASE_URL}/extract-text`, {
+    method: 'POST',
+    headers: getMultipartAuthHeaders(),  // ✅ NO 'Content-Type' for FormData
+    body: formData,
+  });
+  
+  return handleResponse(response);
 };
 
-// Enhanced health check for Python backend
+// Health check for microservices
 export const checkMicroservicesHealth = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/microservices/health`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders()
     });
     
     if (response.ok) {
-      const healthData = await response.json();
-      return healthData;
-    } else {
-      throw new Error('Health check failed');
+      const health = await response.json();
+      return {
+        overall_status: health.overall_status || 'healthy',
+        python_backend: health.services?.gemini_api?.status || 'unknown',
+        database: health.services?.database?.status || 'unknown',
+        file_system: health.services?.file_system?.status || 'unknown'
+      };
     }
+    throw new Error('Backend not responding');
   } catch (error) {
-    console.error('Health check error:', error);
+    console.warn('Health check failed:', error);
     return {
       overall_status: 'unavailable',
-      services: {
-        database: { status: 'unknown' },
-        gemini_api: { status: 'unknown' },
-        file_system: { status: 'unknown' }
-      },
       error: error.message,
-      timestamp: new Date().toISOString()
+      python_backend: 'unknown',
+      database: 'unknown',
+      file_system: 'unknown'
     };
   }
 };
 
-// Get practice areas with authentication
-export const getPracticeAreas = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/practice-areas`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Practice areas error:', error);
-    return [];
-  }
+// Get practice areas with optional client filter
+export const getPracticeAreas = async (clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/practice-areas${params}`, {
+    headers: getAuthHeaders()
+  });
+  return handleResponse(response);
 };
 
-// Get quick filter statistics with authentication
-export const getQuickFilterStats = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/quick-filters`, {
-      method: 'GET',
-      headers: getAuthHeaders(),
-    });
-    return await handleResponse(response);
-  } catch (error) {
-    console.error('Quick filters error:', error);
-    return {
-      high_priority: 0,
-      completed_today: 0,
-      needs_review: 0,
-      processing_errors: 0,
-      low_confidence: 0
-    };
-  }
+// Get quick filter stats with client isolation
+export const getQuickFilterStats = async (clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/quick-filters${params}`, {
+    headers: getAuthHeaders()
+  });
+  return handleResponse(response);
 };
 
-// Get document statistics with authentication
-export const getDocumentStats = async () => {
-  try {
-    const documents = await getDocuments();
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const totalSize = documents.reduce((sum, doc) => sum + (doc.size || 0), 0);
-    
-    return {
-      total: documents.length,
-      analyzed: documents.filter(doc => doc.status === 'Analyzed').length,
-      pending: documents.filter(doc => doc.status === 'Pending' || doc.status === 'Processing').length,
-      errors: documents.filter(doc => doc.status === 'Error').length,
-      today: documents.filter(doc => {
-        const uploadDate = new Date(doc.uploadedAt);
-        return uploadDate >= today;
-      }).length,
-      totalSize: totalSize,
-      totalSizeFormatted: formatFileSize(totalSize),
-      by_type: documents.reduce((acc, doc) => {
-        const type = doc.type || 'unknown';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {})
-    };
-  } catch (error) {
-    console.error('Error getting document stats:', error);
-    throw error;
-  }
+// Update case metadata
+export const updateCaseMetadata = async (caseId, metadata, clientId = null) => {
+  const params = clientId ? `?clientId=${clientId}` : '';
+  const response = await fetch(`${API_BASE_URL}/cases/${caseId}/update-metadata${params}`, {
+    method: 'PATCH',
+    headers: {
+      ...getAuthHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(metadata)
+  });
+  return handleResponse(response);
 };
 
-// Utility function to validate file before upload
-export const validateFile = (file) => {
+// Format file size helper
+export const formatFileSize = (bytes) => {
+  if (bytes === null || bytes === undefined || bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// Validate file before upload
+export const validateFile = (file, options = {}) => {
   const errors = [];
-  const maxFileSize = 50 * 1024 * 1024; // 50MB
-  const supportedFormats = ['PDF', 'DOCX', 'TXT', 'DOC'];
-  const fileExtension = file.name.split('.').pop().toUpperCase();
+  const {
+    maxFileSize = 50 * 1024 * 1024, // 50MB default
+    allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']
+  } = options;
   
-  if (!supportedFormats.includes(fileExtension)) {
-    errors.push(`Unsupported format: ${fileExtension}. Supported formats: ${supportedFormats.join(', ')}`);
-  }
-  
+  // Check file size
   if (file.size > maxFileSize) {
-    errors.push(`File too large: ${formatFileSize(file.size)} (max 50MB)`);
+    errors.push(`File size exceeds ${formatFileSize(maxFileSize)} limit`);
   }
   
+  // Check file type
+  if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|docx?|txt)$/i)) {
+    errors.push('Unsupported file format');
+  }
+  
+  // Check filename
   if (file.name.length > 255) {
     errors.push('Filename too long (max 255 characters)');
   }
@@ -666,10 +439,72 @@ export const validateFile = (file) => {
   return errors;
 };
 
+// 🔥 Token management helpers
+export const getToken = () => {
+  return localStorage.getItem('token') || sessionStorage.getItem('token');
+};
+
+export const isTokenExpired = (token = null) => {
+  const tokenToCheck = token || getToken();
+  if (!tokenToCheck) return true;
+  
+  try {
+    const payload = JSON.parse(atob(tokenToCheck.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 <= Date.now() : false;
+  } catch {
+    return true;
+  }
+};
+
+// Attempt to refresh the access token
+export const refreshAccessToken = async () => {
+  const token = getToken();
+  if (!token) throw new Error('No token to refresh');
+
+  const response = await fetch(`${AUTH_BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Token refresh failed');
+  }
+
+  const data = await response.json();
+  const newToken = data.token || data.accessToken;
+  if (newToken) {
+    localStorage.setItem('token', newToken);
+  }
+  return data;
+};
+
+// Logout helper
+export const logout = async () => {
+  try {
+    const token = getToken();
+    if (token) {
+      await fetch(`${AUTH_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } catch {
+    // Proceed with local cleanup even if server call fails
+  } finally {
+    localStorage.removeItem('token');
+    localStorage.removeItem('selectedClientId');
+    sessionStorage.clear();
+    window.dispatchEvent(new Event('storage'));
+  }
+};
+
+// Export default object for backward compatibility
 export default {
   getDocuments,
   getDocumentById,
-  getDocumentText,
   uploadDocument,
   batchUploadDocuments,
   deleteDocument,
@@ -681,7 +516,13 @@ export default {
   checkMicroservicesHealth,
   getPracticeAreas,
   getQuickFilterStats,
-  getDocumentStats,
+  updateCaseMetadata,
   formatFileSize,
-  validateFile
+  validateFile,
+  getAuthHeaders,
+  getMultipartAuthHeaders,
+  getToken,
+  isTokenExpired,
+  refreshAccessToken,
+  logout
 };

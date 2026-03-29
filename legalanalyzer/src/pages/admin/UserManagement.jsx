@@ -3,9 +3,17 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Icon from 'components/AppIcon';
 import GlobalHeader from 'components/ui/GlobalHeader';
-import authService from 'services/authService';
 
 const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5000/api';
+
+// Helper function to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -54,7 +62,7 @@ const UserManagement = () => {
           role: filters.role !== 'all' ? filters.role : undefined,
           isActive: filters.isActive !== 'all' ? filters.isActive === 'true' : undefined
         },
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
 
       setUsers(response.data.users);
@@ -74,7 +82,7 @@ const UserManagement = () => {
   const fetchRoles = async () => {
     try {
       const response = await axios.get(`${API_URL}/usermanagement/roles`, {
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       setRoles(response.data.roles);
     } catch (err) {
@@ -89,7 +97,7 @@ const UserManagement = () => {
 
     try {
       await axios.put(`${API_URL}/usermanagement/users/${userId}/deactivate`, {}, {
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       fetchUsers();
       alert('User deactivated successfully');
@@ -101,7 +109,7 @@ const UserManagement = () => {
   const handleActivateUser = async (userId, userName) => {
     try {
       await axios.put(`${API_URL}/usermanagement/users/${userId}/activate`, {}, {
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       fetchUsers();
       alert(`${userName} has been activated successfully`);
@@ -117,7 +125,7 @@ const UserManagement = () => {
 
     try {
       await axios.post(`${API_URL}/usermanagement/users/${userId}/reset-quota`, {}, {
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       fetchUsers();
       alert('Quota reset successfully');
@@ -144,7 +152,7 @@ const UserManagement = () => {
           documentQuota: selectedUser.documentQuota,
           subscriptionTier: selectedUser.subscriptionTier
         },
-        { headers: authService.getAuthHeaders() }
+        { headers: getAuthHeaders() }
       );
       setShowEditModal(false);
       fetchUsers();
@@ -171,7 +179,7 @@ const UserManagement = () => {
       await axios.put(
         `${API_URL}/usermanagement/users/${selectedUser.id}/roles`,
         { roles: selectedRoles },
-        { headers: authService.getAuthHeaders() }
+        { headers: getAuthHeaders() }
       );
       setShowRoleModal(false);
       fetchUsers();

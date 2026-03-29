@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-import authService from '../../services/authService';
+import { login, isAuthenticated } from '../../services/authService'; // FIX: named imports, no default export exists
 
 const Login = () => {
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ const Login = () => {
 
   // Check if already authenticated
   useEffect(() => {
-    if (authService.isAuthenticated()) {
+    if (isAuthenticated()) {
       navigate('/dashboard');
     }
   }, [navigate]);
@@ -69,27 +69,34 @@ const Login = () => {
     setErrors({});
 
     try {
-      const result = await authService.login(formData.email, formData.password);
+      const data = await login(formData.email, formData.password); // FIX: direct call
 
-      if (result.success) {
-        // Get user and redirect based on role
-        const user = result.user;
-        
-        // Redirect based on role
-        if (user.roles.includes('Admin')) {
-          navigate('/admin/dashboard');
-        } else if (user.roles.includes('Manager')) {
-          navigate('/manager/dashboard');
-        } else {
-          navigate('/dashboard');
-        }
+      // login() throws on failure, so if we reach here it succeeded
+      // Decode the token to get the user role
+      const token = localStorage.getItem('token');
+      let roles = [];
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const roleValue =
+            payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+            payload['role'] ||
+            payload['roles'];
+          roles = Array.isArray(roleValue) ? roleValue : roleValue ? [roleValue] : [];
+        } catch {}
+      }
+
+      if (roles.includes('Admin')) {
+        navigate('/admin/dashboard');
+      } else if (roles.includes('Manager')) {
+        navigate('/manager/dashboard');
       } else {
-        setErrors({ general: result.error });
+        navigate('/dashboard');
       }
     } catch (error) {
       console.error('Login error:', error);
-      setErrors({ 
-        general: 'An unexpected error occurred. Please try again.' 
+      setErrors({
+        general: error.message || 'An unexpected error occurred. Please try again.'
       });
     } finally {
       setIsLoading(false);
@@ -102,23 +109,30 @@ const Login = () => {
     setErrors({});
 
     try {
-      const result = await authService.login(email, password);
+      await login(email, password); // FIX: direct call
 
-      if (result.success) {
-        const user = result.user;
-        
-        if (user.roles.includes('Admin')) {
-          navigate('/admin/dashboard');
-        } else if (user.roles.includes('Manager')) {
-          navigate('/manager/dashboard');
-        } else {
-          navigate('/dashboard');
-        }
+      const token = localStorage.getItem('token');
+      let roles = [];
+      if (token) {
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          const roleValue =
+            payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ||
+            payload['role'] ||
+            payload['roles'];
+          roles = Array.isArray(roleValue) ? roleValue : roleValue ? [roleValue] : [];
+        } catch {}
+      }
+
+      if (roles.includes('Admin')) {
+        navigate('/admin/dashboard');
+      } else if (roles.includes('Manager')) {
+        navigate('/manager/dashboard');
       } else {
-        setErrors({ general: result.error });
+        navigate('/dashboard');
       }
     } catch (error) {
-      setErrors({ general: 'An unexpected error occurred. Please try again.' });
+      setErrors({ general: error.message || 'An unexpected error occurred. Please try again.' });
     } finally {
       setIsLoading(false);
     }

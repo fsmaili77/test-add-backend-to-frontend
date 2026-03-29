@@ -39,22 +39,40 @@ const Dashboard = () => {
 
   // Fetch documents from Python backend on mount
   useEffect(() => {
-    const fetchDocs = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const docs = await getDocuments();
-        setDocuments(docs);
-      } catch (err) {
-        console.error('Error fetching documents:', err);
-        setError(err.message || 'Failed to load documents from server.');
-      } finally {
-        setLoading(false);
+  const fetchDocs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const selectedClientId = localStorage.getItem('selectedClientId');
+      console.log('=== Dashboard Debug ===');
+      console.log('selectedClientId from localStorage:', selectedClientId);
+      console.log('selectedClientId type:', typeof selectedClientId);
+      
+      const docs = await getDocuments({
+        clientId: selectedClientId || undefined
+      });
+      
+      console.log('Documents received:', docs.length);
+      if (docs.length > 0) {
+        console.log('First document:', {
+          id: docs[0].id,
+          filename: docs[0].filename,
+          user_id: docs[0].user_id,
+          client_id: docs[0].client_id
+        });
       }
-    };
-
-    fetchDocs();
-  }, []);
+      console.log('=== End Debug ===');
+      
+      setDocuments(docs);
+    } catch (err) {
+      console.error('Error fetching documents:', err);
+      setError(err.message || 'Failed to load documents from server.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchDocs();
+}, []);
 
   // Handle document deletion with proper error handling
   const handleDelete = async (id) => {
@@ -77,84 +95,33 @@ const Dashboard = () => {
 
 // Enhanced handleAnalyze function with better error handling and debugging
 const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
-  const document = documents.find(doc => doc.id === id);
-  
-  if (!document) {
-    console.error('Document not found in local state:', id);
-    console.log('Available documents:', documents.map(d => ({ id: d.id, filename: d.filename })));
-    alert('Document not found in the current list. Please refresh the page.');
-    return;
-  }
+    const document = documents.find(doc => doc.id === id);
+    if (!document) return alert('Document not found');
 
-  console.log('Document found:', { id: document.id, filename: document.filename, status: document.status });
+    setAnalyzingDocument(id);
 
-  if (document.status === 'Analyzed' && document.hasAdvancedAnalysis) {
-    // Document already analyzed, just open it
-    window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
-    return;
-  }
-
-  setAnalyzingDocument(id);
-  try {
-    console.log(`Starting analysis for document ID: ${id}`);
-    
-    // First, verify the document exists on the server using the imported getDocumentById function
     try {
+      // Verification now works because getDocumentById is robust
       await getDocumentById(id);
-      console.log('Document exists on server, proceeding with analysis...');
-    } catch (verifyError) {
-      console.error('Document verification failed:', verifyError);
-      if (verifyError.message.includes('not found') || verifyError.message.includes('404')) {
-        throw new Error(`Document ID ${id} not found on server. It may have been deleted.`);
-      }
-      throw new Error(`Server error during verification: ${verifyError.message}`);
-    }
-    
-    const result = await analyzeDocument(id, useAdvancedAnalysis);
-    console.log('Analysis completed:', result);
-    
-    // Update the document in the local state with new information
-    setDocuments(prev => prev.map(doc =>
-      doc.id === id
-        ? {
-            ...doc,
-            status: 'Analyzed',
-            hasAdvancedAnalysis: true,
-            analysisProgress: 100,
-            practice_area: result.practice_area,
-            priority: result.priority,
-            confidence_score: result.confidence_score,
-            analysis_duration_ms: result.analysis_duration_ms
-          }
-        : doc
-    ));
 
-    // Show success message
-    //alert(`Document "${document.filename}" has been successfully re-analyzed!`);
-    
-    // Navigate to the document viewer with analysis view
-    window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
-  } catch (err) {
-    console.error('Analysis error:', err);
-    
-    if (err.message.includes('not found')) {
-      alert(`Document not found: "${document.filename}" may have been deleted from the server. Please refresh the page to sync your document list.`);
-      // Optionally, remove the document from local state
-      setDocuments(prev => prev.filter(doc => doc.id !== id));
-    } else if (err.message.includes('not implemented') || err.message.includes('not available')) {
-      // If re-analysis is not available but document is already analyzed, just open it
-      if (document.status === 'Analyzed') {
-        window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
+      const result = await analyzeDocument(id, useAdvancedAnalysis);
+      
+      setDocuments(prev => prev.map(doc =>
+        doc.id === id ? { ...doc, status: 'Analyzed', hasAdvancedAnalysis: true, ...result } : doc
+      ));
+
+      window.open(`/document-viewer?doc=${encodeURIComponent(id)}&view=analysis`, '_blank');
+    } catch (err) {
+      console.error('Analysis error:', err);
+      if (err.message.includes('not found')) {
+        alert(`Document "${document.filename}" not found on server.`);
       } else {
-        alert('Re-analysis functionality is not available. Document appears to already be processed.');
+        alert(`Analysis failed: ${err.message}`);
       }
-    } else {
-      alert(`Analysis failed: ${err.message}`);
+    } finally {
+      setAnalyzingDocument(null);
     }
-  } finally {
-    setAnalyzingDocument(null);
-  }
-};
+  };
 
   // Enhanced metrics calculation with Python backend data including file sizes
   const metrics = useMemo(() => {

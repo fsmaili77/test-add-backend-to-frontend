@@ -1,7 +1,7 @@
 // src/components/ProtectedRoute.jsx
 import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import authService from '../services/authService';
+import { isAuthenticated, getCurrentUser, logout, getUserRole } from '../services/authService';
 
 const ProtectedRoute = ({ children, allowedRoles = [], requireAuth = true }) => {
   const location = useLocation();
@@ -10,17 +10,17 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireAuth = true }) => 
 
   useEffect(() => {
     const checkAuth = async () => {
-      if (!authService.isAuthenticated()) {
+      if (!isAuthenticated()) {
         setIsLoading(false);
         return;
       }
 
       try {
-        const currentUser = await authService.getCurrentUser();
+        const currentUser = await getCurrentUser();
         setUser(currentUser);
       } catch (error) {
         console.error('Failed to get current user:', error);
-        authService.logout();
+        logout();
       } finally {
         setIsLoading(false);
       }
@@ -40,12 +40,12 @@ const ProtectedRoute = ({ children, allowedRoles = [], requireAuth = true }) => 
     );
   }
 
-  if (requireAuth && !authService.isAuthenticated()) {
+  if (requireAuth && !isAuthenticated()) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (allowedRoles.length > 0 && user) {
-    const hasRequiredRole = user.roles.some(role => allowedRoles.includes(role));
+    const hasRequiredRole = user.roles?.some(role => allowedRoles.includes(role));
 
     if (!hasRequiredRole) {
       return (

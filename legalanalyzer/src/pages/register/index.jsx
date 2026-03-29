@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-import authService from 'services/authService';
+import { register } from 'services/authService'; // FIX: named import, no default export exists
 
 const Register = () => {
   const navigate = useNavigate();
@@ -39,7 +39,6 @@ const Register = () => {
   const validateForm = () => {
     const newErrors = {};
 
-    // Username validation
     if (!formData.username) {
       newErrors.username = 'Username is required';
     } else if (formData.username.length < 3) {
@@ -48,24 +47,20 @@ const Register = () => {
       newErrors.username = 'Username can only contain letters, numbers, and underscores';
     }
 
-    // Email validation
     if (!formData.email) {
       newErrors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
     }
 
-    // First name validation
     if (!formData.firstName) {
       newErrors.firstName = 'First name is required';
     }
 
-    // Last name validation
     if (!formData.lastName) {
       newErrors.lastName = 'Last name is required';
     }
 
-    // Password validation
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
@@ -74,14 +69,12 @@ const Register = () => {
       newErrors.password = 'Password must contain uppercase, lowercase, number, and special character';
     }
 
-    // Confirm password validation
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = 'Please confirm your password';
     } else if (formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
 
-    // Terms validation
     if (!formData.agreeToTerms) {
       newErrors.agreeToTerms = 'You must agree to the terms and conditions';
     }
@@ -102,7 +95,7 @@ const Register = () => {
     setErrors({});
 
     try {
-      const result = await authService.register({
+      await register({ // FIX: direct call
         username: formData.username,
         email: formData.email,
         password: formData.password,
@@ -112,21 +105,17 @@ const Register = () => {
         position: formData.position || undefined
       });
 
-      if (result.success) {
-        setRegistrationSuccess(true);
-        // Redirect to login after 3 seconds
-        setTimeout(() => {
-          navigate('/login', { 
-            state: { message: 'Registration successful! Please log in with your credentials.' }
-          });
-        }, 3000);
-      } else {
-        setErrors({ general: result.error });
-      }
+      // register() throws on failure, so if we reach here it succeeded
+      setRegistrationSuccess(true);
+      setTimeout(() => {
+        navigate('/login', {
+          state: { message: 'Registration successful! Please log in with your credentials.' }
+        });
+      }, 3000);
     } catch (error) {
       console.error('Registration error:', error);
-      setErrors({ 
-        general: 'An unexpected error occurred. Please try again.' 
+      setErrors({
+        general: error.message || 'An unexpected error occurred. Please try again.'
       });
     } finally {
       setIsLoading(false);
@@ -368,8 +357,8 @@ const Register = () => {
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-text-secondary">Password strength:</span>
                     <span className={`text-xs font-medium ${
-                      passwordStrength.strength >= 75 ? 'text-green-600' : 
-                      passwordStrength.strength >= 50 ? 'text-blue-600' : 
+                      passwordStrength.strength >= 75 ? 'text-green-600' :
+                      passwordStrength.strength >= 50 ? 'text-blue-600' :
                       'text-red-600'
                     }`}>
                       {passwordStrength.label}

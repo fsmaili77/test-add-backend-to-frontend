@@ -3,9 +3,17 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Icon from 'components/AppIcon';
 import GlobalHeader from 'components/ui/GlobalHeader';
-import authService from 'services/authService';
 
 const PYTHON_API_URL = import.meta.env.VITE_PYTHON_API_URL || 'http://localhost:3001';
+
+// Helper function to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
 
 const AuditLogs = () => {
   const [logs, setLogs] = useState([]);
@@ -26,7 +34,7 @@ const AuditLogs = () => {
     try {
       const response = await axios.get(`${PYTHON_API_URL}/admin/audit-logs`, {
         params: filters,
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       setLogs(response.data.logs || []);
     } catch (err) {
@@ -44,7 +52,10 @@ const AuditLogs = () => {
       'user_logout': 'LogOut',
       'document_compared': 'GitCompare',
       'document_generated': 'FilePlus',
-      'case_analyzed': 'Search'
+      'case_analyzed': 'Search',
+      'client_created': 'UserPlus',
+      'client_deleted': 'UserMinus',
+      'client_updated': 'UserCheck'
     };
     return icons[action] || 'Activity';
   };
@@ -53,6 +64,8 @@ const AuditLogs = () => {
     if (action.includes('delete')) return 'text-red-600';
     if (action.includes('login')) return 'text-green-600';
     if (action.includes('analyzed')) return 'text-blue-600';
+    if (action.includes('created')) return 'text-green-600';
+    if (action.includes('updated')) return 'text-amber-600';
     return 'text-gray-600';
   };
 
@@ -60,10 +73,18 @@ const AuditLogs = () => {
     <div className="min-h-screen bg-background">
       <GlobalHeader />
       
-      <div className="pt-20 px-6 max-w-7xl mx-auto">
+      <div className="pt-20 px-6 max-w-7xl mx-auto pb-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-text-primary mb-2">Audit Logs</h1>
-          <p className="text-text-secondary">Track all user actions and system events</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-text-primary mb-2">Audit Logs</h1>
+              <p className="text-text-secondary">Track all user actions and system events</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-text-secondary">Total Events</p>
+              <p className="text-2xl font-bold text-primary">{logs.length}</p>
+            </div>
+          </div>
         </div>
 
         {/* Filters */}
@@ -98,13 +119,19 @@ const AuditLogs = () => {
                 <option value="document_analyzed">Document Analyzed</option>
                 <option value="document_deleted">Document Deleted</option>
                 <option value="user_login">User Login</option>
+                <option value="user_logout">User Logout</option>
                 <option value="document_compared">Document Compared</option>
+                <option value="document_generated">Document Generated</option>
+                <option value="case_analyzed">Case Analyzed</option>
+                <option value="client_created">Client Created</option>
+                <option value="client_deleted">Client Deleted</option>
+                <option value="client_updated">Client Updated</option>
               </select>
             </div>
             <div className="flex items-end">
               <button
                 onClick={fetchAuditLogs}
-                className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 transition-colors"
               >
                 <Icon name="Search" size={16} />
                 Apply Filters
@@ -126,30 +153,57 @@ const AuditLogs = () => {
                 <div className="text-center py-12 text-text-secondary">
                   <Icon name="FileText" size={48} className="mx-auto mb-4 opacity-50" />
                   <p>No audit logs found</p>
+                  <p className="text-sm mt-2">Try adjusting your filters or check back later</p>
                 </div>
               ) : (
-                logs.map((log, index) => (
-                  <div key={log.id || index} className="flex gap-4 pb-4 border-b border-border-light last:border-0">
-                    <div className={`flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ${getActionColor(log.action)}`}>
-                      <Icon name={getActionIcon(log.action)} size={20} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-text-primary">{log.userEmail}</p>
-                          <p className="text-sm text-text-secondary">{log.action.replace(/_/g, ' ').toUpperCase()}</p>
-                          {log.details && (
-                            <p className="text-sm text-text-secondary mt-1">{log.details}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-text-secondary">{new Date(log.timestamp).toLocaleString()}</p>
-                          <p className="text-xs text-text-secondary">{log.ipAddress}</p>
+                <>
+                  {/* Header for the timeline */}
+                  <div className="flex items-center justify-between pb-4 border-b-2 border-gray-200">
+                    <h3 className="text-lg font-semibold text-text-primary">Activity Timeline</h3>
+                    <button
+                      onClick={() => {
+                        setFilters({ startDate: '', endDate: '', userId: '', action: 'all' });
+                        fetchAuditLogs();
+                      }}
+                      className="text-sm text-primary hover:text-blue-700 flex items-center gap-1"
+                    >
+                      <Icon name="X" size={14} />
+                      Clear Filters
+                    </button>
+                  </div>
+
+                  {/* Timeline entries */}
+                  {logs.map((log, index) => (
+                    <div key={log.id || index} className="flex gap-4 pb-4 border-b border-border-light last:border-0 hover:bg-gray-50 p-3 rounded-lg transition-colors">
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center ${getActionColor(log.action)}`}>
+                        <Icon name={getActionIcon(log.action)} size={20} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-text-primary truncate">{log.userEmail || 'Unknown User'}</p>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                {log.action.replace(/_/g, ' ').toUpperCase()}
+                              </span>
+                            </div>
+                            {log.details && (
+                              <p className="text-sm text-text-secondary mt-1 break-words">{log.details}</p>
+                            )}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm text-text-secondary whitespace-nowrap">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </p>
+                            {log.ipAddress && (
+                              <p className="text-xs text-text-secondary mt-0.5">{log.ipAddress}</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </>
               )}
             </div>
           </div>

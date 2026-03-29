@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Icon from 'components/AppIcon';
 import GlobalHeader from 'components/ui/GlobalHeader';
-import authService from 'services/authService';
+import { getAuthHeaders } from 'services/authService'; // FIX: named import, no default export exists
 
 const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5000/api';
 
@@ -43,7 +43,7 @@ const ClientManagement = () => {
           search: searchTerm || undefined,
           isActive: showActiveOnly ? true : undefined
         },
-        headers: authService.getAuthHeaders()
+        headers: getAuthHeaders()
       });
       setClients(response.data.clients);
     } catch (err) {
@@ -88,14 +88,14 @@ const ClientManagement = () => {
         await axios.put(
           `${API_URL}/clientmanagement/clients/${editingClient.id}`,
           formData,
-          { headers: authService.getAuthHeaders() }
+          { headers: getAuthHeaders() }
         );
         alert('Client updated successfully');
       } else {
         await axios.post(
           `${API_URL}/clientmanagement/clients`,
           formData,
-          { headers: authService.getAuthHeaders() }
+          { headers: getAuthHeaders() }
         );
         alert('Client created successfully');
       }
@@ -144,7 +144,7 @@ const ClientManagement = () => {
     try {
       await axios.delete(
         `${API_URL}/clientmanagement/clients/${client.id}`,
-        { headers: authService.getAuthHeaders() }
+        { headers: getAuthHeaders() }
       );
       alert('Client deleted successfully');
       fetchClients();
@@ -159,7 +159,7 @@ const ClientManagement = () => {
       await axios.put(
         `${API_URL}/clientmanagement/clients/${client.id}/${endpoint}`,
         {},
-        { headers: authService.getAuthHeaders() }
+        { headers: getAuthHeaders() }
       );
       fetchClients();
     } catch (err) {
@@ -168,7 +168,6 @@ const ClientManagement = () => {
   };
 
   const handleSelectClient = (clientId) => {
-    // Store selected client in localStorage
     localStorage.setItem('selectedClientId', clientId);
     navigate('/dashboard');
   };
@@ -178,7 +177,6 @@ const ClientManagement = () => {
       <GlobalHeader />
       
       <div className="pt-20 px-6 max-w-7xl mx-auto pb-12">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -186,10 +184,7 @@ const ClientManagement = () => {
               <p className="text-text-secondary">Manage your client list and their documents</p>
             </div>
             <button
-              onClick={() => {
-                resetForm();
-                setShowModal(true);
-              }}
+              onClick={() => { resetForm(); setShowModal(true); }}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Icon name="UserPlus" size={20} />
@@ -197,7 +192,6 @@ const ClientManagement = () => {
             </button>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-surface rounded-lg shadow-sm p-4">
               <div className="flex items-center gap-3">
@@ -239,7 +233,6 @@ const ClientManagement = () => {
           </div>
         </div>
 
-        {/* Search and Filters */}
         <div className="bg-surface rounded-lg shadow-sm p-4 mb-6">
           <div className="flex gap-4 items-center">
             <div className="flex-1">
@@ -266,7 +259,6 @@ const ClientManagement = () => {
           </div>
         </div>
 
-        {/* Clients List */}
         {loading ? (
           <div className="bg-surface rounded-lg shadow-sm p-12 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
@@ -333,7 +325,6 @@ const ClientManagement = () => {
                   )}
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-2 pt-4 border-t border-border-light">
                   <button
                     onClick={() => handleSelectClient(client.id)}
@@ -351,9 +342,7 @@ const ClientManagement = () => {
                   <button
                     onClick={() => handleToggleActive(client)}
                     className={`p-2 rounded-lg transition-colors ${
-                      client.isActive
-                        ? 'text-amber-600 hover:bg-amber-50'
-                        : 'text-green-600 hover:bg-green-50'
+                      client.isActive ? 'text-amber-600 hover:bg-amber-50' : 'text-green-600 hover:bg-green-50'
                     }`}
                     title={client.isActive ? 'Deactivate' : 'Activate'}
                   >
@@ -372,7 +361,6 @@ const ClientManagement = () => {
           </div>
         )}
 
-        {/* Add/Edit Client Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
             <div className="bg-surface rounded-lg shadow-elevation-3 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -382,10 +370,7 @@ const ClientManagement = () => {
                     {editingClient ? 'Edit Client' : 'Add New Client'}
                   </h3>
                   <button
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
+                    onClick={() => { setShowModal(false); resetForm(); }}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                   >
                     <Icon name="X" size={20} />
@@ -395,71 +380,42 @@ const ClientManagement = () => {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-text-primary mb-2">
-                        First Name *
-                      </label>
+                      <label className="block text-sm font-medium text-text-primary mb-2">First Name *</label>
                       <input
-                        type="text"
-                        name="firstName"
-                        value={formData.firstName}
+                        type="text" name="firstName" value={formData.firstName}
                         onChange={handleInputChange}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${
-                          formErrors.firstName ? 'border-error' : 'border-border-light'
-                        }`}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${formErrors.firstName ? 'border-error' : 'border-border-light'}`}
                         placeholder="John"
                       />
-                      {formErrors.firstName && (
-                        <p className="mt-1 text-sm text-error">{formErrors.firstName}</p>
-                      )}
+                      {formErrors.firstName && <p className="mt-1 text-sm text-error">{formErrors.firstName}</p>}
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-text-primary mb-2">
-                        Last Name *
-                      </label>
+                      <label className="block text-sm font-medium text-text-primary mb-2">Last Name *</label>
                       <input
-                        type="text"
-                        name="lastName"
-                        value={formData.lastName}
+                        type="text" name="lastName" value={formData.lastName}
                         onChange={handleInputChange}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${
-                          formErrors.lastName ? 'border-error' : 'border-border-light'
-                        }`}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${formErrors.lastName ? 'border-error' : 'border-border-light'}`}
                         placeholder="Doe"
                       />
-                      {formErrors.lastName && (
-                        <p className="mt-1 text-sm text-error">{formErrors.lastName}</p>
-                      )}
+                      {formErrors.lastName && <p className="mt-1 text-sm text-error">{formErrors.lastName}</p>}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-2">
-                      Email Address *
-                    </label>
+                    <label className="block text-sm font-medium text-text-primary mb-2">Email Address *</label>
                     <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
+                      type="email" name="email" value={formData.email}
                       onChange={handleInputChange}
-                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${
-                        formErrors.email ? 'border-error' : 'border-border-light'
-                      }`}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent ${formErrors.email ? 'border-error' : 'border-border-light'}`}
                       placeholder="john.doe@example.com"
                     />
-                    {formErrors.email && (
-                      <p className="mt-1 text-sm text-error">{formErrors.email}</p>
-                    )}
+                    {formErrors.email && <p className="mt-1 text-sm text-error">{formErrors.email}</p>}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-2">
-                      Phone Number
-                    </label>
+                    <label className="block text-sm font-medium text-text-primary mb-2">Phone Number</label>
                     <input
-                      type="tel"
-                      name="phoneNumber"
-                      value={formData.phoneNumber}
+                      type="tel" name="phoneNumber" value={formData.phoneNumber}
                       onChange={handleInputChange}
                       className="w-full px-4 py-2 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       placeholder="+1 (555) 123-4567"
@@ -467,13 +423,9 @@ const ClientManagement = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-2">
-                      Company
-                    </label>
+                    <label className="block text-sm font-medium text-text-primary mb-2">Company</label>
                     <input
-                      type="text"
-                      name="company"
-                      value={formData.company}
+                      type="text" name="company" value={formData.company}
                       onChange={handleInputChange}
                       className="w-full px-4 py-2 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       placeholder="ABC Corporation"
@@ -481,28 +433,20 @@ const ClientManagement = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-2">
-                      Address
-                    </label>
+                    <label className="block text-sm font-medium text-text-primary mb-2">Address</label>
                     <textarea
-                      name="address"
-                      value={formData.address}
-                      onChange={handleInputChange}
-                      rows={2}
+                      name="address" value={formData.address}
+                      onChange={handleInputChange} rows={2}
                       className="w-full px-4 py-2 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       placeholder="123 Main St, City, State, ZIP"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-text-primary mb-2">
-                      Notes
-                    </label>
+                    <label className="block text-sm font-medium text-text-primary mb-2">Notes</label>
                     <textarea
-                      name="notes"
-                      value={formData.notes}
-                      onChange={handleInputChange}
-                      rows={3}
+                      name="notes" value={formData.notes}
+                      onChange={handleInputChange} rows={3}
                       className="w-full px-4 py-2 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
                       placeholder="Additional notes about the client..."
                     />
@@ -511,10 +455,7 @@ const ClientManagement = () => {
                   <div className="flex gap-3 pt-4 border-t border-border-light">
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowModal(false);
-                        resetForm();
-                      }}
+                      onClick={() => { setShowModal(false); resetForm(); }}
                       className="flex-1 px-4 py-2 border border-border-light rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       Cancel
