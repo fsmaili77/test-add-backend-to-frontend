@@ -1,40 +1,53 @@
+// legalanalyzer\src\pages\document-upload\components\FileDropZone.jsx
 import React, { useState, useRef } from 'react';
 import Icon from 'components/AppIcon';
 
-const FileDropZone = ({ onFilesSelected, supportedFormats, maxFileSize, isUploading }) => {
+const FileDropZone = ({ 
+  onFilesSelected, 
+  supportedFormats, 
+  maxFileSize, 
+  isUploading 
+}) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUploading) setIsDragOver(true);
+  };
+
   const handleDragOver = (e) => {
     e.preventDefault();
-    if (!isUploading) {
-      setIsDragOver(true);
-    }
+    e.stopPropagation();
+    if (!isUploading) setIsDragOver(true);
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragOver(false);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragOver(false);
-    
+
     if (isUploading) return;
-    
+
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
+    if (files && files.length > 0) {
       onFilesSelected(files);
     }
   };
 
   const handleFileSelect = (e) => {
     const files = e.target.files;
-    if (files.length > 0) {
+    if (files && files.length > 0) {
       onFilesSelected(files);
     }
-    // Reset input value to allow selecting the same file again
+    // Reset input so the same file can be selected again
     e.target.value = '';
   };
 
@@ -47,12 +60,14 @@ const FileDropZone = ({ onFilesSelected, supportedFormats, maxFileSize, isUpload
   return (
     <div className="bg-surface rounded-lg border border-border-light p-6">
       <div
-        className={`relative border-2 border-dashed rounded-lg p-12 text-center transition-all duration-200 ${
-          isDragOver
-            ? 'border-primary bg-blue-50'
-            : isUploading
-            ? 'border-gray-200 bg-gray-50' :'border-gray-300 hover:border-primary hover:bg-gray-50'
-        } ${isUploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+        className={`relative border-2 border-dashed rounded-xl p-16 text-center transition-all duration-200 cursor-pointer
+          ${isDragOver 
+            ? 'border-primary bg-blue-50 scale-[1.01]' 
+            : isUploading 
+              ? 'border-gray-200 bg-gray-50 cursor-not-allowed' 
+              : 'border-gray-300 hover:border-primary hover:bg-gray-50'
+          }`}
+        onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -68,30 +83,36 @@ const FileDropZone = ({ onFilesSelected, supportedFormats, maxFileSize, isUpload
           disabled={isUploading}
         />
 
-        <div className="space-y-4">
-          <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${
-            isDragOver ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'
-          }`}>
-            <Icon name={isDragOver ? "Download" : "Upload"} size={32} />
+        <div className="space-y-6">
+          {/* Icon */}
+          <div className={`w-20 h-20 mx-auto rounded-2xl flex items-center justify-center transition-colors
+            ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-gray-100 text-gray-400'}`}>
+            <Icon 
+              name={isDragOver ? "Download" : "UploadCloud"} 
+              size={42} 
+            />
           </div>
 
+          {/* Text */}
           <div>
-            <h3 className={`text-lg font-semibold mb-2 ${
-              isUploading ? 'text-gray-400' : 'text-text-primary'
-            }`}>
-              {isDragOver ? 'Drop files here' : 'Upload Documents'}
+            <h3 className={`text-xl font-semibold mb-2 transition-colors
+              ${isUploading ? 'text-gray-400' : isDragOver ? 'text-primary' : 'text-text-primary'}`}>
+              {isDragOver 
+                ? 'Drop your files here' 
+                : 'Upload Legal Documents'}
             </h3>
-            <p className={`text-sm mb-4 ${
-              isUploading ? 'text-gray-400' : 'text-text-secondary'
-            }`}>
+            
+            <p className={`text-sm max-w-md mx-auto transition-colors
+              ${isUploading ? 'text-gray-400' : 'text-text-secondary'}`}>
               {isUploading 
-                ? 'Upload in progress...' :'Drag and drop files here, or click to browse'
-              }
+                ? 'Upload in progress... Please wait' 
+                : 'Drag & drop files here, or click to browse from your computer'}
             </p>
           </div>
 
+          {/* Supported Formats & Limits */}
           {!isUploading && (
-            <div className="space-y-2">
+            <div className="flex flex-col items-center gap-3">
               <div className="flex flex-wrap justify-center gap-2">
                 {supportedFormats.map((format) => (
                   <span
@@ -102,16 +123,21 @@ const FileDropZone = ({ onFilesSelected, supportedFormats, maxFileSize, isUpload
                   </span>
                 ))}
               </div>
+              
               <p className="text-xs text-text-secondary">
-                Maximum file size: {(maxFileSize / (1024 * 1024)).toFixed(0)}MB • Up to 20 files
+                Maximum { (maxFileSize / (1024 * 1024)).toFixed(0) }MB per file • Up to 20 files
               </p>
             </div>
           )}
         </div>
 
+        {/* Drag Overlay */}
         {isDragOver && (
-          <div className="absolute inset-0 bg-primary bg-opacity-10 rounded-lg flex items-center justify-center">
-            <div className="text-primary font-medium">Release to upload files</div>
+          <div className="absolute inset-0 bg-primary/10 border-2 border-primary border-dashed rounded-xl flex items-center justify-center pointer-events-none">
+            <div className="text-center">
+              <Icon name="Download" size={48} className="text-primary mx-auto mb-3" />
+              <p className="font-medium text-primary text-lg">Release to upload</p>
+            </div>
           </div>
         )}
       </div>

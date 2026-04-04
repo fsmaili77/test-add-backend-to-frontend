@@ -1,15 +1,18 @@
 // legalanalyzer/src/pages/dashboard/index.jsx - Updated with Size column support
 import React, { useState, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import GlobalHeader from 'components/ui/GlobalHeader';
 import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
 import RecentActivity from './components/RecentActivity';
 import { useLanguage } from 'contexts/LanguageContext';
 import { getDocuments, getDocumentById, deleteDocument, analyzeDocument, checkMicroservicesHealth, formatFileSize } from '../../api';
+import axios from 'axios';
 
 const Dashboard = () => {
   const { texts } = useLanguage();
+  const navigate = useNavigate();
+
   const [activeFilter, setActiveFilter] = useState('All');
   const [sortConfig, setSortConfig] = useState({ key: 'uploadDate', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
@@ -21,6 +24,11 @@ const Dashboard = () => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [hasClients, setHasClients] = useState(false);
+  const [checkingClients, setCheckingClients] = useState(true);
+  const [selectedClient, setSelectedClient] = useState(null);   // ← NEW: For display
+
+  const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5093/api';
 
   // Check backend health on mount
   useEffect(() => {
@@ -37,8 +45,40 @@ const Dashboard = () => {
     checkHealth();
   }, []);
 
-  // Fetch documents from Python backend on mount
+  // Check clients and selected client info
   useEffect(() => {
+    const initializeDashboard = async () => {
+      const selectedClientId = localStorage.getItem('selectedClientId');
+
+      try {
+        // Fetch clients to check if any exist
+        const clientsRes = await axios.get(`${API_URL}/clientmanagement/clients`, {
+          params: { isActive: true },
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+
+        const clientsList = clientsRes.data.clients || [];
+        setHasClients(clientsList.length > 0);
+
+        // If client is selected, fetch its details for display
+        if (selectedClientId) {
+          const client = clientsList.find(c => c.id === parseInt(selectedClientId));
+          if (client) setSelectedClient(client);
+        }
+
+      } catch (err) {
+        console.error('Failed to fetch clients:', err);
+        setHasClients(false);
+      } finally {
+        setCheckingClients(false);
+      }
+    };
+
+    initializeDashboard();
+  }, []);
+
+  // Fetch documents from Python backend on mount
+  /* useEffect(() => {
   const fetchDocs = async () => {
     setLoading(true);
     setError(null);
@@ -72,7 +112,39 @@ const Dashboard = () => {
     }
   };
   fetchDocs();
-}, []);
+}, []); */
+
+// Fetch documents with smart redirect
+  useEffect(() => {
+    const fetchDocs = async () => {
+      const selectedClientId = localStorage.getItem('selectedClientId');
+
+      // Smart Redirect: No client selected but user has clients → go to clients page
+      if (!selectedClientId && !checkingClients && hasClients) {
+        navigate('/clients');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const docs = await getDocuments({
+          clientId: selectedClientId || undefined
+        });
+        setDocuments(docs);
+      } catch (err) {
+        console.error('Error fetching documents:', err);
+        setError(err.message || 'Failed to load documents from server.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (!checkingClients) {
+      fetchDocs();
+    }
+  }, [hasClients, checkingClients, navigate]);
 
   // Handle document deletion with proper error handling
   const handleDelete = async (id) => {
@@ -262,12 +334,22 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
           <BreadcrumbTrail />
           
           {/* Page Header */}
+          {/* Page Header + Selected Client Display */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-text-primary mb-2">
+                <h1 className="text-3xl font-bold text-text-primary mb-1">
                   {texts.dashboard || 'Dashboard'}
                 </h1>
+                {selectedClient && (
+                  <div className="flex items-center gap-2 text-lg text-primary font-medium">
+                    <Icon name="User" size={20} />
+                    <span>
+                      {selectedClient.firstName} {selectedClient.lastName}
+                      {selectedClient.company && ` — ${selectedClient.company}`}
+                    </span>
+                  </div>
+                )}
                 <p className="text-text-secondary">
                   {texts.welcomeBack || 'Welcome back'} - Powered by Python Flask & Gemini AI
                 </p>
@@ -320,7 +402,7 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
           )}
 
           {/* Main Grid Layout */}
-          {!loading && !error && (
+          {!loading && !checkingClients && !error && (
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
               {/* Left Section - Documents Table (8 cols) */}
               <div className="xl:col-span-9">
