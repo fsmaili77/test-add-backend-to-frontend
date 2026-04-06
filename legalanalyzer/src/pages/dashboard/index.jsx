@@ -77,43 +77,6 @@ const Dashboard = () => {
     initializeDashboard();
   }, []);
 
-  // Fetch documents from Python backend on mount
-  /* useEffect(() => {
-  const fetchDocs = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const selectedClientId = localStorage.getItem('selectedClientId');
-      console.log('=== Dashboard Debug ===');
-      console.log('selectedClientId from localStorage:', selectedClientId);
-      console.log('selectedClientId type:', typeof selectedClientId);
-      
-      const docs = await getDocuments({
-        clientId: selectedClientId || undefined
-      });
-      
-      console.log('Documents received:', docs.length);
-      if (docs.length > 0) {
-        console.log('First document:', {
-          id: docs[0].id,
-          filename: docs[0].filename,
-          user_id: docs[0].user_id,
-          client_id: docs[0].client_id
-        });
-      }
-      console.log('=== End Debug ===');
-      
-      setDocuments(docs);
-    } catch (err) {
-      console.error('Error fetching documents:', err);
-      setError(err.message || 'Failed to load documents from server.');
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchDocs();
-}, []); */
-
 // Fetch documents with smart redirect
   useEffect(() => {
     const fetchDocs = async () => {

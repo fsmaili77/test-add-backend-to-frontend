@@ -1,7 +1,8 @@
-// legalanalyzer/src/pages/analysis-dashboard/index.jsx - Fixed with functional PDF generation
+// legalanalyzer/src/pages/analysis-dashboard/index.jsx
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie,
-Cell, LineChart, Line, Area, AreaChart } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie,
+  Cell, LineChart, Line, AreaChart, Area } from 'recharts';
 import GlobalHeader from 'components/ui/GlobalHeader';
 import BreadcrumbTrail from 'components/ui/BreadcrumbTrail';
 import Icon from 'components/AppIcon';
@@ -10,6 +11,7 @@ import FilterControls from './components/FilterControls';
 import ProcessingJobsTable from './components/ProcessingJobsTable';
 import ExportModal from './components/ExportModal';
 import { getAnalytics, getTrends, getDocuments, checkMicroservicesHealth, formatFileSize } from '../../api';
+import axios from 'axios';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -20,7 +22,10 @@ const AnalysisDashboard = () => {
   const [practiceArea, setPracticeArea] = useState('all');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [selectedChart, setSelectedChart] = useState('volume');
-  
+
+  const [selectedClient, setSelectedClient] = useState(null);
+  const API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5093/api';
+
   // State for real data
   const [analyticsData, setAnalyticsData] = useState(null);
   const [trendsData, setTrendsData] = useState(null);
@@ -29,24 +34,48 @@ const AnalysisDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch real data from Python backend
+  // Fetch selected client info for display (mirrors dashboard/index.jsx pattern)
+  useEffect(() => {
+    const fetchSelectedClient = async () => {
+      const selectedClientId = localStorage.getItem('selectedClientId');
+      if (!selectedClientId) return;
+
+      try {
+        const clientsRes = await axios.get(`${API_URL}/clientmanagement/clients`, {
+          params: { isActive: true },
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        const clientsList = clientsRes.data.clients || [];
+        const client = clientsList.find(c => c.id === parseInt(selectedClientId));
+        if (client) setSelectedClient(client);
+      } catch (err) {
+        console.error('Failed to fetch client info:', err);
+      }
+    };
+
+    fetchSelectedClient();
+  }, [API_URL]);
+
+  // Fetch real data from backend — respects client isolation via selectedClientId
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      
+
+      // Read clientId once, consistently
+      const selectedClientId = localStorage.getItem('selectedClientId') || undefined;
+
       try {
-        // Fetch analytics, trends, documents, and health status in parallel
         const [analytics, trends, docs, health] = await Promise.all([
-          getAnalytics().catch(err => {
+          getAnalytics(selectedClientId).catch(err => {
             console.warn('Analytics fetch failed:', err);
             return null;
           }),
-          getTrends().catch(err => {
+          getTrends(selectedClientId).catch(err => {
             console.warn('Trends fetch failed:', err);
             return null;
           }),
-          getDocuments().catch(err => {
+          getDocuments({ clientId: selectedClientId }).catch(err => {
             console.warn('Documents fetch failed:', err);
             return [];
           }),
@@ -73,66 +102,42 @@ const AnalysisDashboard = () => {
 
   // Calculate metrics from real data
   const metricsData = React.useMemo(() => {
-    if (!analyticsData || !documents.length) {
+    if (!analyticsData && !documents.length) {
       return [
-        {
-          id: 'total-docs',
-          title: 'Total Documents Analyzed',
-          value: '0',
-          change: '0%',
-          trend: 'neutral',
-          icon: 'FileText',
-          color: 'text-blue-600',
-          bgColor: 'bg-blue-50'
-        },
-        {
-          id: 'avg-processing',
-          title: 'Avg Processing Time',
-          value: '0 sec',
-          change: '0%',
-          trend: 'neutral',
-          icon: 'Clock',
-          color: 'text-green-600',
-          bgColor: 'bg-green-50'
-        },
-        {
-          id: 'accuracy-rate',
-          title: 'Analysis Success Rate',
-          value: '0%',
-          change: '0%',
-          trend: 'neutral',
-          icon: 'Target',
-          color: 'text-purple-600',
-          bgColor: 'bg-purple-50'
-        },
-        {
-          id: 'storage-used',
-          title: 'Storage Used',
-          value: '0 Bytes',
-          change: '0%',
-          trend: 'neutral',
-          icon: 'HardDrive',
-          color: 'text-amber-600',
-          bgColor: 'bg-amber-50'
-        }
+        { id: 'total-docs', title: 'Total Documents Analyzed', value: '0', change: '0%', trend: 'neutral', icon: 'FileText', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+        { id: 'avg-processing', title: 'Avg Processing Time', value: '0 sec', change: '0%', trend: 'neutral', icon: 'Clock', color: 'text-green-600', bgColor: 'bg-green-50' },
+        { id: 'accuracy-rate', title: 'Analysis Success Rate', value: '0%', change: '0%', trend: 'neutral', icon: 'Target', color: 'text-purple-600', bgColor: 'bg-purple-50' },
+        { id: 'storage-used', title: 'Storage Used', value: '0 Bytes', change: '0%', trend: 'neutral', icon: 'HardDrive', color: 'text-amber-600', bgColor: 'bg-amber-50' }
       ];
     }
 
-    const totalDocs = analyticsData.document_counts?.total || 0;
-    const analyzedDocs = analyticsData.document_counts?.analyzed || 0;
-    const avgProcessingTime = analyticsData.average_analysis_time_ms 
+    // Use analyticsData if available, otherwise compute from documents
+    const totalDocs = analyticsData?.document_counts?.total ?? documents.length;
+    const analyzedDocs = analyticsData?.document_counts?.analyzed
+      ?? documents.filter(d => d.status === 'Analyzed').length;
+
+    const avgProcessingTime = analyticsData?.average_analysis_time_ms
       ? `${(analyticsData.average_analysis_time_ms / 1000).toFixed(1)} sec`
-      : '0 sec';
-    const successRate = totalDocs > 0 
+      : (() => {
+          const analyzed = documents.filter(d => d.analysis_duration_ms);
+          if (!analyzed.length) return '0 sec';
+          const avg = analyzed.reduce((sum, d) => sum + d.analysis_duration_ms, 0) / analyzed.length;
+          return `${(avg / 1000).toFixed(1)} sec`;
+        })();
+
+    const successRate = totalDocs > 0
       ? ((analyzedDocs / totalDocs) * 100).toFixed(1) + '%'
       : '0%';
-    const storageUsed = formatFileSize(analyticsData.total_file_size_bytes || 0);
 
-    // Calculate trends (mock change percentages based on success rate)
+    // Storage: prefer analyticsData, fallback to summing doc sizes
+    const totalBytes = analyticsData?.total_file_size_bytes
+      ?? documents.reduce((sum, doc) => sum + (doc.size || 0), 0);
+    const storageUsed = formatFileSize(totalBytes);
+
     const successRateNum = totalDocs > 0 ? (analyzedDocs / totalDocs) * 100 : 0;
-    const processingTrend = successRateNum > 90 ? 'down' : 'up'; // Good performance = lower processing time
+    const processingTrend = successRateNum > 90 ? 'down' : 'up';
     const successTrend = successRateNum > 80 ? 'up' : 'down';
-    
+
     return [
       {
         id: 'total-docs',
@@ -184,7 +189,7 @@ const AnalysisDashboard = () => {
     }
 
     const totalCount = analyticsData.document_types.reduce((sum, type) => sum + type.count, 0);
-    
+
     return analyticsData.document_types.map(type => ({
       name: type.type?.charAt(0).toUpperCase() + type.type?.slice(1).replace('_', ' ') || 'Unknown',
       value: totalCount > 0 ? Math.round((type.count / totalCount) * 100) : 0,
@@ -192,16 +197,16 @@ const AnalysisDashboard = () => {
     }));
   }, [analyticsData]);
 
-  // Processing volume over time (generate from documents data)
+  // Processing volume over time (generated from documents data)
+  // Uses uploadedAt (mapped from creation_date in getDocuments)
   const volumeData = React.useMemo(() => {
     if (!documents.length) {
       return [];
     }
 
-    // Group documents by date
     const dateGroups = documents.reduce((acc, doc) => {
       if (!doc.uploadedAt) return acc;
-      
+
       const date = new Date(doc.uploadedAt).toISOString().split('T')[0];
       if (!acc[date]) {
         acc[date] = { total: 0, analyzed: 0 };
@@ -213,10 +218,9 @@ const AnalysisDashboard = () => {
       return acc;
     }, {});
 
-    // Convert to chart data format
     const chartData = Object.entries(dateGroups)
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-7) // Last 7 days
+      .slice(-7)
       .map(([date, stats]) => ({
         date,
         documents: stats.total,
@@ -239,7 +243,6 @@ const AnalysisDashboard = () => {
       ];
     }
 
-    // Generate accuracy data based on document types
     const categories = [
       'Gemini AI Analysis',
       'Text Extraction (OCR)',
@@ -249,12 +252,11 @@ const AnalysisDashboard = () => {
     ];
 
     const totalProcessed = documentTypeData.reduce((sum, type) => sum + type.count, 0);
-    const baseAccuracy = totalProcessed > 0 ? 85 : 0; // Base accuracy
+    const baseAccuracy = totalProcessed > 0 ? 85 : 0;
 
-    return categories.map((category, index) => {
-      const accuracy = baseAccuracy > 0 ? baseAccuracy + Math.random() * 10 : 0; // 85-95% range
-      const processed = Math.round(totalProcessed * (0.6 + Math.random() * 0.4)); // Varying processed counts
-      
+    return categories.map(category => {
+      const accuracy = baseAccuracy > 0 ? baseAccuracy + Math.random() * 10 : 0;
+      const processed = Math.round(totalProcessed * (0.6 + Math.random() * 0.4));
       return {
         category,
         accuracy: Math.round(accuracy * 10) / 10,
@@ -270,72 +272,39 @@ const AnalysisDashboard = () => {
     pdf.setFontSize(fontSize);
     const lines = pdf.splitTextToSize(text, maxWidth);
     let currentY = y;
-    
     lines.forEach((line) => {
       pdf.text(line, x, currentY);
       currentY += fontSize / 2 + 2;
     });
-    
     return currentY;
   };
 
   // Chart capture function
   const captureChartsForPDF = async () => {
     const charts = [];
-    
     try {
-      // Capture pie chart
       const pieChartElement = document.querySelector('[data-chart-type="pie"]');
       if (pieChartElement) {
-        const canvas = await html2canvas(pieChartElement, { 
-          scale: 2, 
-          backgroundColor: '#ffffff',
-          useCORS: true 
-        });
-        charts.push({
-          type: 'pie',
-          title: 'Document Type Distribution',
-          dataUrl: canvas.toDataURL('image/png')
-        });
+        const canvas = await html2canvas(pieChartElement, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        charts.push({ type: 'pie', title: 'Document Type Distribution', dataUrl: canvas.toDataURL('image/png') });
       }
-
-      // Capture volume chart
       const volumeChartElement = document.querySelector('[data-chart-type="volume"]');
       if (volumeChartElement) {
-        const canvas = await html2canvas(volumeChartElement, { 
-          scale: 2, 
-          backgroundColor: '#ffffff',
-          useCORS: true 
-        });
-        charts.push({
-          type: 'volume',
-          title: 'Processing Volume',
-          dataUrl: canvas.toDataURL('image/png')
-        });
+        const canvas = await html2canvas(volumeChartElement, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        charts.push({ type: 'volume', title: 'Processing Volume', dataUrl: canvas.toDataURL('image/png') });
       }
-
-      // Capture accuracy chart
       const accuracyChartElement = document.querySelector('[data-chart-type="accuracy"]');
       if (accuracyChartElement) {
-        const canvas = await html2canvas(accuracyChartElement, { 
-          scale: 2, 
-          backgroundColor: '#ffffff',
-          useCORS: true 
-        });
-        charts.push({
-          type: 'accuracy',
-          title: 'AI Performance Analysis',
-          dataUrl: canvas.toDataURL('image/png')
-        });
+        const canvas = await html2canvas(accuracyChartElement, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+        charts.push({ type: 'accuracy', title: 'AI Performance Analysis', dataUrl: canvas.toDataURL('image/png') });
       }
     } catch (error) {
       console.warn('Could not capture charts:', error);
     }
-
     return charts;
   };
 
-  // Enhanced PDF with charts function (now actually used)
+  // Enhanced PDF with charts function
   const generatePDFWithCharts = async (data, timestamp, options) => {
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -343,7 +312,6 @@ const AnalysisDashboard = () => {
     const margin = 20;
     let yPosition = margin;
 
-    // Helper function to add new page if needed
     const checkPageBreak = (requiredHeight) => {
       if (yPosition + requiredHeight > pageHeight - margin) {
         pdf.addPage();
@@ -353,20 +321,17 @@ const AnalysisDashboard = () => {
       return false;
     };
 
-    // Title
     pdf.setFontSize(20);
     pdf.setFont('helvetica', 'bold');
     pdf.text('Legal Analyzer Report', pageWidth / 2, yPosition, { align: 'center' });
     yPosition += 15;
 
-    // Subtitle with wrapped text
     pdf.setFontSize(12);
     pdf.setFont('helvetica', 'normal');
     const subtitle = `Generated: ${new Date(data.generatedAt).toLocaleDateString()} | Date Range: ${data.dateRange}`;
     yPosition = addWrappedText(pdf, subtitle, pageWidth / 2, yPosition, pageWidth - 2 * margin, 12);
     yPosition += 20;
 
-    // Key Metrics Section
     if (options.includeMetrics) {
       checkPageBreak(40);
       pdf.setFontSize(16);
@@ -374,7 +339,6 @@ const AnalysisDashboard = () => {
       pdf.text('Key Performance Metrics', margin, yPosition);
       yPosition += 10;
 
-      // Draw metrics in a grid
       const metricsPerRow = 2;
       const metricWidth = (pageWidth - 2 * margin - 10) / metricsPerRow;
       const metricHeight = 25;
@@ -384,19 +348,13 @@ const AnalysisDashboard = () => {
         const col = index % metricsPerRow;
         const x = margin + col * (metricWidth + 10);
         const y = yPosition + row * (metricHeight + 5);
-
         checkPageBreak(metricHeight);
-
-        // Draw metric box
         pdf.setDrawColor(30, 58, 138);
         pdf.setFillColor(248, 249, 250);
         pdf.rect(x, y, metricWidth, metricHeight, 'FD');
-
-        // Metric content
         pdf.setFontSize(9);
         pdf.setFont('helvetica', 'normal');
         pdf.text(metric.title, x + 5, y + 8);
-
         pdf.setFontSize(14);
         pdf.setFont('helvetica', 'bold');
         pdf.text(metric.value, x + 5, y + 18);
@@ -405,26 +363,19 @@ const AnalysisDashboard = () => {
       yPosition += Math.ceil(data.metrics.length / metricsPerRow) * (metricHeight + 5) + 15;
     }
 
-    // Include charts if requested
     if (options.includeCharts) {
       const charts = await captureChartsForPDF();
-      
       for (const chart of charts) {
         checkPageBreak(120);
-        
-        // Chart title
         pdf.setFontSize(14);
         pdf.setFont('helvetica', 'bold');
         pdf.text(chart.title, margin, yPosition);
         yPosition += 10;
-        
-        // Add chart image
         try {
           pdf.addImage(chart.dataUrl, 'PNG', margin, yPosition, pageWidth - 2 * margin, 100);
           yPosition += 110;
         } catch (error) {
           console.warn('Could not add chart to PDF:', error);
-          // Add fallback text
           pdf.setFontSize(10);
           pdf.setFont('helvetica', 'italic');
           yPosition = addWrappedText(pdf, 'Chart could not be rendered in PDF', margin, yPosition, pageWidth - 2 * margin);
@@ -433,18 +384,15 @@ const AnalysisDashboard = () => {
       }
     }
 
-    // Document Type Distribution Table
     checkPageBreak(60);
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
     pdf.text('Document Type Distribution', margin, yPosition);
     yPosition += 15;
 
-    // Table
     const tableHeaders = ['Document Type', 'Count', 'Percentage'];
     const colWidths = [80, 40, 40];
     let xPos = margin;
-    
     pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     tableHeaders.forEach((header, index) => {
@@ -453,13 +401,11 @@ const AnalysisDashboard = () => {
       xPos += colWidths[index];
     });
     yPosition += 10;
-
     pdf.setFont('helvetica', 'normal');
     data.documentTypes.forEach((type) => {
       checkPageBreak(10);
       xPos = margin;
       const rowData = [type.name, type.count.toString(), type.value + '%'];
-      
       rowData.forEach((cell, index) => {
         pdf.rect(xPos, yPosition - 5, colWidths[index], 10);
         pdf.text(cell, xPos + 2, yPosition);
@@ -468,7 +414,6 @@ const AnalysisDashboard = () => {
       yPosition += 10;
     });
 
-    // Footer
     const totalPages = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       pdf.setPage(i);
@@ -481,18 +426,14 @@ const AnalysisDashboard = () => {
     pdf.save(`legal-analyzer-report-${timestamp}.pdf`);
   };
 
-  // Updated handleExport function that uses the chart-enabled PDF generation
+  // Handle export
   const handleExport = async (format, options) => {
-    console.log('Exporting report:', format, options);
-    
-    // Show loading indicator
     const loadingToast = document.createElement('div');
     loadingToast.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg z-50';
     loadingToast.textContent = 'Generating report...';
     document.body.appendChild(loadingToast);
-    
+
     try {
-      // Create export data based on current analytics
       const exportData = {
         generatedAt: new Date().toISOString(),
         dateRange,
@@ -503,32 +444,28 @@ const AnalysisDashboard = () => {
         volumeData,
         accuracyData,
         systemHealth: backendHealth,
-        documents: documents.slice(0, 100), // Limit to 100 recent documents
+        documents: documents.slice(0, 100),
         exportOptions: options
       };
 
       const timestamp = new Date().toISOString().split('T')[0];
 
       if (format === 'pdf') {
-        // Use the enhanced PDF generation with charts
         await generatePDFWithCharts(exportData, timestamp, options);
       } else if (format === 'excel') {
         await generateExcelReportWithLibrary(exportData, timestamp, options);
       } else {
         generateJSONReport(exportData, timestamp);
       }
-      
-      // Show success message
+
       loadingToast.textContent = 'Report generated successfully!';
       loadingToast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg z-50';
-      
     } catch (error) {
       console.error('Export failed:', error);
       loadingToast.textContent = 'Export failed. Please try again.';
       loadingToast.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg z-50';
     }
-    
-    // Remove loading indicator after 3 seconds
+
     setTimeout(() => {
       if (document.body.contains(loadingToast)) {
         document.body.removeChild(loadingToast);
@@ -542,7 +479,6 @@ const AnalysisDashboard = () => {
   const generateExcelReportWithLibrary = (data, timestamp, options) => {
     const workbook = XLSX.utils.book_new();
 
-    // Summary Sheet
     const summaryData = [
       ['Legal Analyzer Report'],
       [''],
@@ -561,7 +497,6 @@ const AnalysisDashboard = () => {
       summaryData.push(['']);
     }
 
-    // System Health
     summaryData.push(
       ['System Health'],
       ['Backend Status', data.systemHealth?.overall_status || 'Unknown'],
@@ -569,87 +504,46 @@ const AnalysisDashboard = () => {
     );
 
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    
-    // Set column widths
-    summarySheet['!cols'] = [
-      { width: 30 },
-      { width: 20 },
-      { width: 15 },
-      { width: 15 }
-    ];
-
+    summarySheet['!cols'] = [{ width: 30 }, { width: 20 }, { width: 15 }, { width: 15 }];
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
-    // Document Types Sheet
-    const docTypesData = [
-      ['Document Type Distribution'],
-      [''],
-      ['Type', 'Count', 'Percentage']
-    ];
-    
+    const docTypesData = [['Document Type Distribution'], [''], ['Type', 'Count', 'Percentage']];
     data.documentTypes.forEach(type => {
       docTypesData.push([type.name, type.count, type.value / 100]);
     });
-
     const docTypesSheet = XLSX.utils.aoa_to_sheet(docTypesData);
     docTypesSheet['!cols'] = [{ width: 25 }, { width: 15 }, { width: 15 }];
-
     XLSX.utils.book_append_sheet(workbook, docTypesSheet, 'Document Types');
 
-    // Performance Data Sheet
-    const performanceData = [
-      ['Gemini AI Performance Analysis'],
-      [''],
-      ['Component', 'Accuracy (%)', 'Documents Processed']
-    ];
-    
+    const performanceData = [['Gemini AI Performance Analysis'], [''], ['Component', 'Accuracy (%)', 'Documents Processed']];
     data.accuracyData.forEach(item => {
       performanceData.push([item.category, item.accuracy / 100, item.processed]);
     });
-
     const performanceSheet = XLSX.utils.aoa_to_sheet(performanceData);
     performanceSheet['!cols'] = [{ width: 35 }, { width: 15 }, { width: 20 }];
-
     XLSX.utils.book_append_sheet(workbook, performanceSheet, 'AI Performance');
 
-    // Volume Trends Sheet
     if (data.volumeData.length > 0) {
-      const volumeData = [
-        ['Processing Volume Over Time'],
-        [''],
-        ['Date', 'Documents Processed', 'Success Rate (%)']
-      ];
-      
+      const volumeSheetData = [['Processing Volume Over Time'], [''], ['Date', 'Documents Processed', 'Success Rate (%)']];
       data.volumeData.forEach(item => {
-        volumeData.push([item.date, item.documents, item.accuracy / 100]);
+        volumeSheetData.push([item.date, item.documents, item.accuracy / 100]);
       });
-
-      const volumeSheet = XLSX.utils.aoa_to_sheet(volumeData);
+      const volumeSheet = XLSX.utils.aoa_to_sheet(volumeSheetData);
       volumeSheet['!cols'] = [{ width: 15 }, { width: 20 }, { width: 18 }];
       XLSX.utils.book_append_sheet(workbook, volumeSheet, 'Volume Trends');
     }
 
-    // Processing Jobs Sheet
     if (options.includeJobDetails && data.documents.length > 0) {
       const jobsData = [
         ['Processing Jobs Details'],
         [''],
         ['Document Name', 'Type', 'Status', 'Upload Date', 'File Size']
       ];
-      
       data.documents.forEach(doc => {
-        // Try multiple possible property names for document name
-        const documentName = doc.name || doc.filename || doc.fileName || 
-                            doc.document_name || doc.title || doc.originalName || 
-                            doc.file_name || 'Unknown Document';
-        
-        // Try multiple possible property names for document type
-        const documentType = doc.type || doc.document_type || doc.fileType || 
-                            doc.file_type || doc.extension || 'Unknown';
-        
-        // Try multiple possible property names for file size
-        const fileSize = doc.fileSize || doc.file_size || doc.size || 'Unknown';
-        
+        // Uses current state field names from getDocuments mapping
+        const documentName = doc.filename || doc.title || doc.name || 'Unknown Document';
+        const documentType = doc.type || doc.document_type || 'Unknown';
+        const fileSize = doc.size || doc.fileSize || 'Unknown';
         jobsData.push([
           documentName,
           documentType,
@@ -658,23 +552,15 @@ const AnalysisDashboard = () => {
           fileSize
         ]);
       });
-
       const jobsSheet = XLSX.utils.aoa_to_sheet(jobsData);
-      jobsSheet['!cols'] = [
-        { width: 35 },
-        { width: 20 },
-        { width: 15 },
-        { width: 15 },
-        { width: 15 }
-      ];
+      jobsSheet['!cols'] = [{ width: 35 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }];
       XLSX.utils.book_append_sheet(workbook, jobsSheet, 'Processing Jobs');
     }
 
-    // Write and download the file
     XLSX.writeFile(workbook, `legal-analyzer-report-${timestamp}.xlsx`);
   };
 
-  // JSON fallback function
+  // JSON fallback
   const generateJSONReport = (data, timestamp) => {
     const dataStr = JSON.stringify(data, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
@@ -686,16 +572,13 @@ const AnalysisDashboard = () => {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric'
-    });
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   // Generate system alerts based on real data
   const systemAlerts = React.useMemo(() => {
     const alerts = [];
-    
+
     if (!backendHealth || backendHealth.overall_status !== 'healthy') {
       alerts.push({
         type: 'error',
@@ -708,7 +591,6 @@ const AnalysisDashboard = () => {
 
     if (analyticsData && analyticsData.document_counts) {
       const { total, analyzed, errors } = analyticsData.document_counts;
-      
       if (errors > 0) {
         alerts.push({
           type: 'error',
@@ -718,7 +600,6 @@ const AnalysisDashboard = () => {
           icon: 'AlertCircle'
         });
       }
-      
       if (total > 0 && (analyzed / total) < 0.8) {
         alerts.push({
           type: 'warning',
@@ -740,7 +621,6 @@ const AnalysisDashboard = () => {
       });
     }
 
-    // If no real alerts, add info about system status
     if (alerts.length === 0 && backendHealth?.overall_status === 'healthy') {
       alerts.push({
         type: 'info',
@@ -778,18 +658,27 @@ const AnalysisDashboard = () => {
       <main className="pt-16">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <BreadcrumbTrail />
-          
+
           {/* Page Header */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
             <div>
               <h1 className="text-3xl font-bold text-text-primary mb-2">Analysis Dashboard</h1>
+              {selectedClient && (
+                <div className="flex items-center gap-2 text-lg text-primary font-medium mb-1">
+                  <Icon name="User" size={20} />
+                  <span>
+                    {selectedClient.firstName} {selectedClient.lastName}
+                    {selectedClient.company && ` --- ${selectedClient.company}`}
+                  </span>
+                </div>
+              )}
               <p className="text-text-secondary">
                 Real-time insights from Python Flask backend with Gemini AI analysis
               </p>
               {backendHealth && (
                 <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm mt-2 ${
-                  backendHealth.overall_status === 'healthy' 
-                    ? 'bg-green-100 text-green-800' 
+                  backendHealth.overall_status === 'healthy'
+                    ? 'bg-green-100 text-green-800'
                     : 'bg-red-100 text-red-800'
                 }`}>
                   <div className={`w-2 h-2 rounded-full ${
@@ -799,6 +688,7 @@ const AnalysisDashboard = () => {
                 </div>
               )}
             </div>
+
             <div className="flex items-center space-x-4 mt-4 lg:mt-0">
               <button
                 onClick={() => setIsExportModalOpen(true)}
@@ -807,7 +697,7 @@ const AnalysisDashboard = () => {
                 <Icon name="Download" size={16} />
                 <span>Export Report</span>
               </button>
-              <button 
+              <button
                 onClick={() => window.location.reload()}
                 className="flex items-center space-x-2 px-4 py-2 border border-border-medium text-text-primary rounded-lg hover:bg-gray-50 transition-colors duration-200"
               >
@@ -820,11 +710,17 @@ const AnalysisDashboard = () => {
           {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <Icon name="AlertCircle" size={20} className="text-red-600" />
+              <div className="flex items-start space-x-2">
+                <Icon name="AlertCircle" size={20} className="text-red-600 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h3 className="font-medium text-red-800">Data Loading Error</h3>
+                  <h3 className="font-medium text-red-800 mb-1">Connection Error</h3>
                   <p className="text-sm text-red-700">{error}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="mt-2 text-sm text-red-800 underline hover:no-underline"
+                  >
+                    Retry Connection
+                  </button>
                 </div>
               </div>
             </div>
@@ -840,51 +736,24 @@ const AnalysisDashboard = () => {
             setPracticeArea={setPracticeArea}
             analyticsData={analyticsData}
             documents={documents}
-            onQuickFilter={(filterType) => {
-              console.log('Quick filter applied:', filterType);
-              // You can implement specific filtering logic here
-              switch (filterType) {
-                case 'completed_today':
-                  setDateRange('7days');
-                  break;
-                case 'processing_errors':
-                  // Could add a status filter state if needed
-                  console.log('Filtering for processing errors');
-                  break;
-                case 'needs_review':
-                  console.log('Filtering for documents needing review');
-                  break;
-                case 'high_priority':
-                  console.log('Filtering for high priority documents');
-                  break;
-                case 'low_confidence':
-                  console.log('Filtering for low AI confidence documents');
-                  break;
-                default:
-                  break;
-              }
-            }}
           />
 
           {/* Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
             {metricsData.map((metric) => (
               <MetricsCard key={metric.id} {...metric} />
             ))}
           </div>
 
-          {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {/* Document Type Distribution */}
             <div className="bg-surface rounded-lg border border-border-light p-6" data-chart-type="pie">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-text-primary">Document Type Distribution</h3>
-                <div className="flex items-center space-x-2">
-                  <Icon name="PieChart" size={20} className="text-text-secondary" />
-                  <span className="text-sm text-text-secondary">({documentTypeData.reduce((sum, item) => sum + item.count, 0)} total)</span>
-                </div>
+                <Icon name="PieChart" size={20} className="text-text-secondary" />
               </div>
-              <div className="h-80">
+              <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -892,38 +761,37 @@ const AnalysisDashboard = () => {
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
-                      outerRadius={120}
-                      paddingAngle={5}
+                      outerRadius={100}
                       dataKey="value"
+                      label={({ name, value }) => `${name}: ${value}%`}
+                      labelLine={false}
                     >
                       {documentTypeData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip
-                      formatter={(value, name, props) => [
-                        `${value}% (${props.payload.count} docs)`,
-                        props.payload.name
-                      ]}
-                    />
+                    <Tooltip formatter={(value, name) => [`${value}%`, name]} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                {documentTypeData.map((item, index) => (
-                  <div key={item.name} className="flex items-center space-x-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    />
-                    <span className="text-sm text-text-secondary">{item.name}</span>
-                    <span className="text-sm font-medium text-text-primary">{item.value}%</span>
+              {/* Legend */}
+              <div className="mt-4 space-y-2">
+                {documentTypeData.map((type, index) => (
+                  <div key={type.name} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                      <span className="text-sm text-text-secondary">{type.name}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-medium text-text-primary">{type.value}%</span>
+                      <span className="text-xs text-text-secondary">({type.count} docs)</span>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Processing Volume Chart */}
+            {/* Processing Volume */}
             <div className="bg-surface rounded-lg border border-border-light p-6" data-chart-type="volume">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-text-primary">Processing Volume (Last 7 Days)</h3>
@@ -951,52 +819,24 @@ const AnalysisDashboard = () => {
                   {selectedChart === 'volume' ? (
                     <AreaChart data={volumeData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={formatDate}
-                        stroke="#6B7280"
-                        fontSize={12}
-                      />
+                      <XAxis dataKey="date" tickFormatter={formatDate} stroke="#6B7280" fontSize={12} />
                       <YAxis stroke="#6B7280" fontSize={12} />
                       <Tooltip
                         labelFormatter={(value) => formatDate(value)}
                         formatter={(value) => [value, 'Documents']}
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="documents"
-                        stroke="#1E3A8A"
-                        fill="#1E3A8A"
-                        fillOpacity={0.1}
-                        strokeWidth={2}
-                      />
+                      <Area type="monotone" dataKey="documents" stroke="#1E3A8A" fill="#1E3A8A" fillOpacity={0.1} strokeWidth={2} />
                     </AreaChart>
                   ) : (
                     <LineChart data={volumeData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis
-                        dataKey="date"
-                        tickFormatter={formatDate}
-                        stroke="#6B7280"
-                        fontSize={12}
-                      />
-                      <YAxis
-                        domain={[0, 100]}
-                        stroke="#6B7280"
-                        fontSize={12}
-                        tickFormatter={(value) => `${value}%`}
-                      />
+                      <XAxis dataKey="date" tickFormatter={formatDate} stroke="#6B7280" fontSize={12} />
+                      <YAxis domain={[0, 100]} stroke="#6B7280" fontSize={12} tickFormatter={(value) => `${value}%`} />
                       <Tooltip
                         labelFormatter={(value) => formatDate(value)}
                         formatter={(value) => [`${value}%`, 'Success Rate']}
                       />
-                      <Line
-                        type="monotone"
-                        dataKey="accuracy"
-                        stroke="#10B981"
-                        strokeWidth={3}
-                        dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
-                      />
+                      <Line type="monotone" dataKey="accuracy" stroke="#10B981" strokeWidth={3} dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }} />
                     </LineChart>
                   )}
                 </ResponsiveContainer>
@@ -1014,32 +854,13 @@ const AnalysisDashboard = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={accuracyData} layout="horizontal">
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis
-                    type="number"
-                    domain={[80, 100]}
-                    stroke="#6B7280"
-                    fontSize={12}
-                    tickFormatter={(value) => `${value}%`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="category"
-                    stroke="#6B7280"
-                    fontSize={12}
-                    width={150}
-                  />
+                  <XAxis type="number" domain={[80, 100]} stroke="#6B7280" fontSize={12} tickFormatter={(value) => `${value}%`} />
+                  <YAxis type="category" dataKey="category" stroke="#6B7280" fontSize={12} width={150} />
                   <Tooltip
-                    formatter={(value, name) => [
-                      `${value}%`,
-                      'Accuracy'
-                    ]}
+                    formatter={(value) => [`${value}%`, 'Accuracy']}
                     labelFormatter={(label) => `Component: ${label}`}
                   />
-                  <Bar
-                    dataKey="accuracy"
-                    fill="#1E3A8A"
-                    radius={[0, 4, 4, 0]}
-                  />
+                  <Bar dataKey="accuracy" fill="#1E3A8A" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1061,14 +882,14 @@ const AnalysisDashboard = () => {
                   alert.type === 'warning' ? 'bg-yellow-50 border-yellow-200' :
                   'bg-blue-50 border-blue-200'
                 }`}>
-                  <Icon 
-                    name={alert.icon} 
-                    size={16} 
+                  <Icon
+                    name={alert.icon}
+                    size={16}
                     className={`mt-0.5 ${
                       alert.type === 'error' ? 'text-error' :
                       alert.type === 'warning' ? 'text-warning' :
                       'text-primary'
-                    }`} 
+                    }`}
                   />
                   <div className="flex-1">
                     <p className={`text-sm font-medium ${
@@ -1080,9 +901,7 @@ const AnalysisDashboard = () => {
                       alert.type === 'error' ? 'text-red-600' :
                       alert.type === 'warning' ? 'text-amber-600' :
                       'text-blue-600'
-                    }`}>
-                      {alert.message}
-                    </p>
+                    }`}>{alert.message}</p>
                     <p className={`text-xs mt-1 ${
                       alert.type === 'error' ? 'text-red-500' :
                       alert.type === 'warning' ? 'text-amber-500' :

@@ -50,7 +50,9 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
               <button
                 onClick={() => setExportFormat('pdf')}
                 className={`flex items-center space-x-2 p-3 border rounded-lg transition-colors duration-200 ${
-                  exportFormat === 'pdf' ?'border-primary bg-blue-50 text-primary' :'border-border-medium text-text-secondary hover:border-primary hover:text-primary'
+                  exportFormat === 'pdf'
+                    ? 'border-primary bg-blue-50 text-primary'
+                    : 'border-border-medium text-text-secondary hover:border-primary hover:text-primary'
                 }`}
               >
                 <Icon name="FileText" size={20} />
@@ -59,7 +61,9 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
               <button
                 onClick={() => setExportFormat('excel')}
                 className={`flex items-center space-x-2 p-3 border rounded-lg transition-colors duration-200 ${
-                  exportFormat === 'excel' ?'border-primary bg-blue-50 text-primary' :'border-border-medium text-text-secondary hover:border-primary hover:text-primary'
+                  exportFormat === 'excel'
+                    ? 'border-primary bg-blue-50 text-primary'
+                    : 'border-border-medium text-text-secondary hover:border-primary hover:text-primary'
                 }`}
               >
                 <Icon name="Table" size={20} />
@@ -83,7 +87,7 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
                 />
                 <span className="text-sm text-text-primary">Charts and Visualizations</span>
               </label>
-              
+
               <label className="flex items-center space-x-3">
                 <input
                   type="checkbox"
@@ -93,7 +97,7 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
                 />
                 <span className="text-sm text-text-primary">Key Performance Metrics</span>
               </label>
-              
+
               <label className="flex items-center space-x-3">
                 <input
                   type="checkbox"
@@ -103,7 +107,7 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
                 />
                 <span className="text-sm text-text-primary">Processing Job Details</span>
               </label>
-              
+
               <label className="flex items-center space-x-3">
                 <input
                   type="checkbox"
@@ -132,7 +136,7 @@ const ExportModal = ({ isOpen, onClose, onExport }) => {
               <option value="1year">Last Year</option>
               <option value="custom">Custom Range</option>
             </select>
-            
+
             {exportOptions.dateRange === 'custom' && (
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div>

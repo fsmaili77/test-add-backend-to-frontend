@@ -1,15 +1,15 @@
-// legalanalyzer/src/pages/analysis-dashboard/components/FilterControls.jsx - Updated with real data
+// legalanalyzer/src/pages/analysis-dashboard/components/FilterControls.jsx
 import React, { useMemo } from 'react';
 import Icon from 'components/AppIcon';
 
-const FilterControls = ({ 
-  dateRange, 
-  setDateRange, 
-  documentType, 
-  setDocumentType, 
-  practiceArea, 
+const FilterControls = ({
+  dateRange,
+  setDateRange,
+  documentType,
+  setDocumentType,
+  practiceArea,
   setPracticeArea,
-  // New props for real data
+  // Real data props
   analyticsData,
   documents,
   onQuickFilter
@@ -24,17 +24,16 @@ const FilterControls = ({
     { value: 'custom', label: 'Custom Range' }
   ];
 
-  // Generate document type options from real data
+  // Generate document type options from real analyticsData
   const documentTypeOptions = useMemo(() => {
     const options = [{ value: 'all', label: 'All Types' }];
-    
+
     if (analyticsData?.document_types?.length > 0) {
       analyticsData.document_types.forEach(type => {
         if (type.type && type.count > 0) {
           const displayName = type.type
             .replace(/_/g, ' ')
             .replace(/\b\w/g, l => l.toUpperCase());
-          
           options.push({
             value: type.type.toLowerCase(),
             label: `${displayName} (${type.count})`,
@@ -43,7 +42,7 @@ const FilterControls = ({
         }
       });
     }
-    
+
     // Fallback options if no real data
     if (options.length === 1) {
       options.push(
@@ -53,23 +52,23 @@ const FilterControls = ({
         { value: 'image', label: 'Image Files' }
       );
     }
-    
+
     return options;
   }, [analyticsData]);
 
-  // Generate practice area options (you might need to add practice_area to your backend data)
+  // Generate practice area options from documents
+  // Uses practice_area field mapped from getDocuments in api.js
   const practiceAreaOptions = useMemo(() => {
     const options = [{ value: 'all', label: 'All Practice Areas' }];
-    
-    // Try to extract practice areas from document metadata or tags
+
     if (documents?.length > 0) {
       const practiceAreas = new Map();
-      
+
       documents.forEach(doc => {
-        // Check various possible property names for practice area
-        const area = doc.practice_area || doc.practiceArea || doc.category || 
-                    doc.department || doc.area || doc.tag;
-        
+        // practice_area is mapped directly from case_item.practice_area in getDocuments
+        const area = doc.practice_area || doc.practiceArea || doc.category ||
+                     doc.department || doc.area || doc.tag;
+
         if (area && typeof area === 'string') {
           const normalizedArea = area.toLowerCase().trim();
           if (normalizedArea && normalizedArea !== 'unknown' && normalizedArea !== 'null') {
@@ -77,13 +76,11 @@ const FilterControls = ({
           }
         }
       });
-      
-      // Convert to options with counts
+
       practiceAreas.forEach((count, area) => {
         const displayName = area
           .replace(/[-_]/g, ' ')
           .replace(/\b\w/g, l => l.toUpperCase());
-        
         options.push({
           value: area,
           label: `${displayName} (${count})`,
@@ -91,7 +88,7 @@ const FilterControls = ({
         });
       });
     }
-    
+
     // Fallback options if no real data found
     if (options.length === 1) {
       options.push(
@@ -103,57 +100,54 @@ const FilterControls = ({
         { value: 'employment', label: 'Employment Law' }
       );
     }
-    
+
     return options;
   }, [documents]);
 
-  // Calculate quick filter counts from real data
+  // Calculate quick filter counts from real document data
+  // Uses fields mapped by getDocuments: priority, confidence_score, needs_review, status, uploadedAt
   const quickFilterStats = useMemo(() => {
     if (!documents?.length) {
-      return {
-        highPriority: 0,
-        completedToday: 0,
-        needsReview: 0,
-        processingErrors: 0
-      };
+      return { highPriority: 0, completedToday: 0, needsReview: 0, processingErrors: 0 };
     }
-    
+
     const today = new Date().toISOString().split('T')[0];
-    
+
     return {
-      highPriority: documents.filter(doc => 
+      // priority is mapped from case_item.priority in getDocuments
+      highPriority: documents.filter(doc =>
         doc.priority === 'high' || doc.priority === 'urgent' || doc.isUrgent
       ).length,
-      
+
+      // completedToday uses uploadedAt (mapped from creation_date) — note: no separate completedAt field
       completedToday: documents.filter(doc => {
-        const completedDate = doc.completedAt || doc.analyzed_at || doc.updatedAt;
-        return completedDate && completedDate.startsWith(today) && 
+        const completedDate = doc.completedAt || doc.analyzed_at || doc.uploadedAt;
+        return completedDate && completedDate.startsWith(today) &&
                (doc.status === 'Analyzed' || doc.status === 'completed');
       }).length,
-      
-      needsReview: documents.filter(doc => 
-        doc.status === 'needs_review' || doc.status === 'pending_review' || 
-        doc.needsReview || doc.confidence_score < 0.8
+
+      // needs_review is mapped from case_item.needs_review; confidence_score from case_item.confidence_score
+      needsReview: documents.filter(doc =>
+        doc.status === 'needs_review' || doc.status === 'pending_review' ||
+        doc.needs_review || (doc.confidence_score != null && doc.confidence_score < 0.8)
       ).length,
-      
-      processingErrors: documents.filter(doc => 
-        doc.status === 'error' || doc.status === 'failed' || doc.hasError
+
+      processingErrors: documents.filter(doc =>
+        doc.status === 'Error' || doc.status === 'error' ||
+        doc.status === 'failed' || doc.hasError
       ).length
     };
   }, [documents]);
 
-  // Handle quick filter clicks
   const handleQuickFilter = (filterType) => {
     if (onQuickFilter) {
       onQuickFilter(filterType);
     } else {
-      // Default behavior - could set filters based on type
       switch (filterType) {
         case 'completed_today':
           setDateRange('7days');
           break;
         case 'processing_errors':
-          // Could trigger a status filter if you add one
           console.log('Show processing errors');
           break;
         case 'needs_review':
@@ -175,7 +169,7 @@ const FilterControls = ({
           <Icon name="Filter" size={20} className="text-text-secondary" />
           <h3 className="text-lg font-semibold text-text-primary">Filter Controls</h3>
         </div>
-        
+
         {/* Active filters indicator */}
         {(dateRange !== '30days' || documentType !== 'all' || practiceArea !== 'all') && (
           <div className="flex items-center space-x-2">
@@ -211,7 +205,7 @@ const FilterControls = ({
           </div>
         )}
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Date Range Filter */}
         <div>
@@ -299,7 +293,7 @@ const FilterControls = ({
       {/* Quick Filter Buttons */}
       <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border-light">
         <span className="text-sm text-text-secondary mr-2">Quick Filters:</span>
-        
+
         <button
           onClick={() => handleQuickFilter('high_priority')}
           className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-full hover:bg-red-200 transition-colors duration-200 flex items-center space-x-1"
@@ -310,7 +304,7 @@ const FilterControls = ({
             {quickFilterStats.highPriority}
           </span>
         </button>
-        
+
         <button
           onClick={() => handleQuickFilter('completed_today')}
           className="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors duration-200 flex items-center space-x-1"
@@ -321,7 +315,7 @@ const FilterControls = ({
             {quickFilterStats.completedToday}
           </span>
         </button>
-        
+
         <button
           onClick={() => handleQuickFilter('needs_review')}
           className="px-3 py-1 text-xs bg-amber-100 text-amber-700 rounded-full hover:bg-amber-200 transition-colors duration-200 flex items-center space-x-1"
@@ -332,7 +326,7 @@ const FilterControls = ({
             {quickFilterStats.needsReview}
           </span>
         </button>
-        
+
         <button
           onClick={() => handleQuickFilter('processing_errors')}
           className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded-full hover:bg-red-200 transition-colors duration-200 flex items-center space-x-1"
@@ -351,7 +345,7 @@ const FilterControls = ({
         >
           Low AI Confidence
         </button>
-        
+
         {/* Clear all filters button */}
         {(dateRange !== '30days' || documentType !== 'all' || practiceArea !== 'all') && (
           <button

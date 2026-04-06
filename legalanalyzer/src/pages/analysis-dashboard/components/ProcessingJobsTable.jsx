@@ -1,4 +1,4 @@
-// legalanalyzer/src/pages/analysis-dashboard/components/ProcessingJobsTable.jsx - Complete component with real data
+// legalanalyzer/src/pages/analysis-dashboard/components/ProcessingJobsTable.jsx
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
@@ -13,44 +13,47 @@ const ProcessingJobsTable = ({ documents = [] }) => {
   // Filter documents based on status
   const filteredDocuments = useMemo(() => {
     if (filterStatus === 'all') return documents;
-    return documents.filter(doc => doc.status.toLowerCase() === filterStatus.toLowerCase());
+    return documents.filter(doc => doc.status?.toLowerCase() === filterStatus.toLowerCase());
   }, [documents, filterStatus]);
 
   // Sort documents
+  // Field mapping (from getDocuments in api.js):
+  //   uploadedAt    ← creation_date
+  //   filename      ← filename
+  //   type          ← document_type
+  //   size          ← file_size / size
+  //   status        ← status
+  //   analysis_duration_ms ← analysis_duration_ms
+  //   document_language    ← document_language
   const sortedDocuments = useMemo(() => {
     if (!filteredDocuments.length) return [];
-    
+
     const sorted = [...filteredDocuments].sort((a, b) => {
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
-      
       if (sortConfig.key === 'uploadedAt') {
-        const aDate = new Date(aValue || 0);
-        const bDate = new Date(bValue || 0);
+        const aDate = new Date(a.uploadedAt || 0);
+        const bDate = new Date(b.uploadedAt || 0);
         return sortConfig.direction === 'asc' ? aDate - bDate : bDate - aDate;
       }
-      
+
       if (sortConfig.key === 'size') {
         const aSize = a.size || 0;
         const bSize = b.size || 0;
         return sortConfig.direction === 'asc' ? aSize - bSize : bSize - aSize;
       }
-      
+
       if (sortConfig.key === 'analysis_duration_ms') {
         const aDuration = a.analysis_duration_ms || 0;
         const bDuration = b.analysis_duration_ms || 0;
         return sortConfig.direction === 'asc' ? aDuration - bDuration : bDuration - aDuration;
       }
-      
-      // String comparison for other fields
-      const aStr = String(aValue || '').toLowerCase();
-      const bStr = String(bValue || '').toLowerCase();
-      
+
+      const aStr = String(a[sortConfig.key] || '').toLowerCase();
+      const bStr = String(b[sortConfig.key] || '').toLowerCase();
       if (aStr < bStr) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aStr > bStr) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-    
+
     return sorted;
   }, [filteredDocuments, sortConfig]);
 
@@ -76,7 +79,6 @@ const ProcessingJobsTable = ({ documents = [] }) => {
       'Error': { icon: 'XCircle', color: 'text-error' },
       'Pending': { icon: 'Clock', color: 'text-secondary' }
     };
-    
     const config = statusConfig[status] || statusConfig['Pending'];
     return <Icon name={config.icon} size={16} className={config.color} />;
   };
@@ -88,9 +90,8 @@ const ProcessingJobsTable = ({ documents = [] }) => {
       'Error': 'bg-error/10 text-error',
       'Pending': 'bg-secondary/10 text-secondary'
     };
-    
     const colorClass = statusConfig[status] || statusConfig['Pending'];
-    
+
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
         {getStatusIcon(status)}
@@ -101,7 +102,6 @@ const ProcessingJobsTable = ({ documents = [] }) => {
 
   const formatDuration = (ms) => {
     if (!ms || ms === 0) return 'N/A';
-    
     if (ms < 1000) return `${ms}ms`;
     if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
     return `${(ms / 60000).toFixed(1)}m`;
@@ -109,9 +109,9 @@ const ProcessingJobsTable = ({ documents = [] }) => {
 
   const getDurationClass = (ms) => {
     if (!ms || ms === 0) return 'text-text-secondary';
-    if (ms < 10000) return 'text-success'; // Fast (under 10s)
-    if (ms < 30000) return 'text-warning'; // Normal (10-30s)
-    return 'text-error'; // Slow (over 30s)
+    if (ms < 10000) return 'text-success';   // Fast (under 10s)
+    if (ms < 30000) return 'text-warning';   // Normal (10-30s)
+    return 'text-error';                     // Slow (over 30s)
   };
 
   const statusOptions = [
@@ -124,14 +124,21 @@ const ProcessingJobsTable = ({ documents = [] }) => {
 
   const handleRetryProcessing = async (documentId) => {
     try {
-      // In a real implementation, this would call the re-analysis API
       console.log('Retrying processing for document:', documentId);
-      // You could add API call here: await analyzeDocument(documentId);
       alert('Retry functionality would trigger re-analysis of the document.');
     } catch (error) {
       console.error('Error retrying document processing:', error);
       alert('Failed to retry processing. Please try again.');
     }
+  };
+
+  const SortIcon = ({ columnKey }) => {
+    if (sortConfig.key !== columnKey) {
+      return <Icon name="ChevronsUpDown" size={14} className="text-text-secondary ml-1" />;
+    }
+    return sortConfig.direction === 'asc'
+      ? <Icon name="ChevronUp" size={14} className="text-primary ml-1" />
+      : <Icon name="ChevronDown" size={14} className="text-primary ml-1" />;
   };
 
   if (!documents || documents.length === 0) {
@@ -145,7 +152,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
           <Icon name="FileX" size={48} className="text-text-secondary mx-auto mb-4" />
           <p className="text-text-secondary mb-2">No processing jobs found</p>
           <p className="text-sm text-text-secondary">Upload documents to see processing status here</p>
-          <Link 
+          <Link
             to="/document-upload"
             className="inline-flex items-center px-4 py-2 mt-4 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
@@ -165,7 +172,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
           <h3 className="text-lg font-semibold text-text-primary">Processing Jobs</h3>
           <span className="text-sm text-text-secondary">({documents.length} total)</span>
         </div>
-        
+
         {/* Status Filter */}
         <div className="flex items-center space-x-2">
           <span className="text-sm text-text-secondary">Filter:</span>
@@ -186,122 +193,130 @@ const ProcessingJobsTable = ({ documents = [] }) => {
         </div>
       </div>
 
-      {/* Summary Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-success">{documents.filter(d => d.status === 'Analyzed').length}</div>
-          <div className="text-xs text-text-secondary">Completed</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-warning">{documents.filter(d => d.status === 'Processing').length}</div>
-          <div className="text-xs text-text-secondary">Processing</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-secondary">{documents.filter(d => d.status === 'Pending').length}</div>
-          <div className="text-xs text-text-secondary">Pending</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-error">{documents.filter(d => d.status === 'Error').length}</div>
-          <div className="text-xs text-text-secondary">Failed</div>
-        </div>
-      </div>
-
-      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-border-light">
-          <thead className="bg-gray-50">
-            <tr>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('filename')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Document</span>
-                  <Icon name="ArrowUpDown" size={12} />
-                </div>
+        <table className="min-w-full">
+          <thead>
+            <tr className="border-b border-border-light">
+              {/* Document Name */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('filename')}
+                >
+                  Document
+                  <SortIcon columnKey="filename" />
+                </button>
               </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('uploadedAt')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Started</span>
-                  <Icon name="ArrowUpDown" size={12} />
-                </div>
+              {/* Status */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('status')}
+                >
+                  Status
+                  <SortIcon columnKey="status" />
+                </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                Status
+              {/* Upload Date */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('uploadedAt')}
+                >
+                  Upload Date
+                  <SortIcon columnKey="uploadedAt" />
+                </button>
               </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('analysis_duration_ms')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Duration</span>
-                  <Icon name="ArrowUpDown" size={12} />
-                </div>
+              {/* Processing Time */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('analysis_duration_ms')}
+                >
+                  Processing Time
+                  <SortIcon columnKey="analysis_duration_ms" />
+                </button>
               </th>
-              <th 
-                className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort('size')}
-              >
-                <div className="flex items-center space-x-1">
-                  <span>Size</span>
-                  <Icon name="ArrowUpDown" size={12} />
-                </div>
+              {/* Size */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('size')}
+                >
+                  Size
+                  <SortIcon columnKey="size" />
+                </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                Type
+              {/* Type */}
+              <th className="px-6 py-3 text-left">
+                <button
+                  className="flex items-center text-xs font-medium text-text-secondary uppercase tracking-wider hover:text-text-primary"
+                  onClick={() => handleSort('type')}
+                >
+                  Type
+                  <SortIcon columnKey="type" />
+                </button>
               </th>
+              {/* Actions */}
               <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-surface divide-y divide-border-light">
+          <tbody className="divide-y divide-border-light">
             {paginatedDocuments.map((document) => (
-              <tr key={document.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 h-8 w-8">
-                      <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center">
-                        <Icon name="FileText" size={16} className="text-primary" />
+              <tr key={document.id} className="hover:bg-gray-50 transition-colors duration-150">
+                {/* Document Name */}
+                <td className="px-6 py-4">
+                  <div className="flex flex-col">
+                    {/* filename is mapped from case_item.filename in getDocuments */}
+                    <span className="font-medium text-sm text-text-primary truncate max-w-xs" title={document.filename}>
+                      {document.filename || document.title || 'Unnamed Document'}
+                    </span>
+                    <span className="text-xs text-text-secondary">ID: {document.id}</span>
+                    {/* Show Gemini AI badge for analyzed docs */}
+                    {document.status === 'Analyzed' && (
+                      <div className="flex items-center mt-1">
+                        <Icon name="Cpu" size={12} className="text-blue-600 mr-1" />
+                        <span className="text-xs text-blue-600">Gemini AI</span>
                       </div>
-                    </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-text-primary truncate max-w-xs" title={document.filename}>
-                        {document.filename}
+                    )}
+                    {document.status === 'Processing' && (
+                      <div className="mt-1">
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div className="bg-warning h-1.5 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+                        </div>
                       </div>
-                      <div className="text-xs text-text-secondary">
-                        ID: {document.id} • {document.fileExtension}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-text-secondary">
-                    {document.uploadedAt ? new Date(document.uploadedAt).toLocaleDateString() : 'Unknown'}
-                  </div>
-                  <div className="text-xs text-text-secondary">
-                    {document.uploadedAt ? new Date(document.uploadedAt).toLocaleTimeString() : ''}
-                  </div>
-                </td>
+
+                {/* Status */}
                 <td className="px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(document.status)}
-                  {document.status === 'Analyzed' && (
-                    <div className="flex items-center mt-1">
-                      <Icon name="Zap" size={12} className="text-blue-600 mr-1" />
-                      <span className="text-xs text-blue-600">Gemini AI</span>
-                    </div>
-                  )}
-                  {document.status === 'Processing' && (
-                    <div className="mt-1">
-                      <div className="w-full bg-gray-200 rounded-full h-1.5">
-                        <div className="bg-warning h-1.5 rounded-full animate-pulse" style={{ width: '60%' }}></div>
-                      </div>
-                    </div>
-                  )}
                 </td>
+
+                {/* Upload Date — uses uploadedAt (mapped from creation_date) */}
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex flex-col">
+                    <span className="text-sm text-text-primary">
+                      {document.uploadedAt
+                        ? new Date(document.uploadedAt).toLocaleDateString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric'
+                          })
+                        : 'Unknown'}
+                    </span>
+                    {document.uploadedAt && (
+                      <span className="text-xs text-text-secondary">
+                        {new Date(document.uploadedAt).toLocaleTimeString('en-US', {
+                          hour: '2-digit', minute: '2-digit'
+                        })}
+                      </span>
+                    )}
+                  </div>
+                </td>
+
+                {/* Processing Time — analysis_duration_ms from backend */}
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-col">
                     <span className={`font-medium text-sm ${getDurationClass(document.analysis_duration_ms)}`}>
@@ -315,6 +330,8 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                     )}
                   </div>
                 </td>
+
+                {/* Size — mapped from file_size / size in getDocuments */}
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-col">
                     <span className="font-medium text-sm">
@@ -322,16 +339,18 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                     </span>
                     {document.size && (
                       <span className="text-xs text-text-secondary">
-                        {document.size > 10 * 1024 * 1024 ? 'Large' : 
+                        {document.size > 10 * 1024 * 1024 ? 'Large' :
                          document.size > 1024 * 1024 ? 'Medium' : 'Small'}
                       </span>
                     )}
                   </div>
                 </td>
+
+                {/* Type — mapped from document_type; language from document_language */}
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-col">
                     <span className="text-sm capitalize">
-                      {document.type === 'auto' ? 'Auto-detect' : 
+                      {document.type === 'auto' ? 'Auto-detect' :
                        document.type?.split('_').join(' ') || 'Unknown'}
                     </span>
                     {document.document_language && (
@@ -341,6 +360,8 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                     )}
                   </div>
                 </td>
+
+                {/* Actions */}
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end space-x-2">
                     <Link
@@ -350,6 +371,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                     >
                       <Icon name="Eye" size={16} />
                     </Link>
+
                     {document.status === 'Analyzed' && (
                       <Link
                         to={`/document-viewer?doc=${encodeURIComponent(document.id)}&view=analysis`}
@@ -359,6 +381,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                         <Icon name="BarChart3" size={16} />
                       </Link>
                     )}
+
                     {document.status === 'Error' && (
                       <button
                         className="text-warning hover:text-amber-700 p-1 rounded hover:bg-amber-50"
@@ -368,6 +391,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                         <Icon name="RefreshCw" size={16} />
                       </button>
                     )}
+
                     {(document.status === 'Analyzed' || document.status === 'Error') && (
                       <button
                         className="text-text-secondary hover:text-red-700 p-1 rounded hover:bg-red-50"
@@ -398,6 +422,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
               {sortedDocuments.length} results
             </p>
           </div>
+
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
@@ -407,11 +432,10 @@ const ProcessingJobsTable = ({ documents = [] }) => {
               <Icon name="ChevronLeft" size={16} className="mr-1" />
               Previous
             </button>
-            
+
             <div className="flex items-center space-x-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
                 if (totalPages > 7) {
-                  // Show condensed pagination for many pages
                   if (page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1) {
                     return (
                       <button
@@ -433,7 +457,6 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                   }
                   return null;
                 } else {
-                  // Show all pages if 7 or fewer
                   return (
                     <button
                       key={page}
@@ -450,7 +473,7 @@ const ProcessingJobsTable = ({ documents = [] }) => {
                 }
               })}
             </div>
-            
+
             <button
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
