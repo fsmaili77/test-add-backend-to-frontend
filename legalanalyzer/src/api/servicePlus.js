@@ -846,6 +846,26 @@ export const getCaseAnalyses = async (page = 1, perPage = 10, filters = {}) => {
   }
 };
 
+/**
+ * Get all clients belonging to the current authenticated user.
+ * Calls GET /clients  (Flask blueprint endpoint in main.py)
+ */
+export const getClients = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/clients`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      // credentials: 'include',  // uncomment if your backend uses cookie-based auth
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    console.error('Error fetching clients:', error);
+    throw error;
+  }
+};
+
 // Export all functions
 export default {
   // Document Comparison (existing)
@@ -872,6 +892,9 @@ export default {
   getCaseAnalyses,
   getCaseAnalysis,
   analyzeSettlementOpportunities,
+
+  // Client management
+  getClients,
   
   // Health and stats
   checkServicePlusHealth,

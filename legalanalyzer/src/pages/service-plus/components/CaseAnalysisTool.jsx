@@ -1,17 +1,19 @@
-// src/pages/service-plus/components/CaseAnalysisTool.jsx - Functional component
+// src/pages/service-plus/components/CaseAnalysisTool.jsx
+
 import React, { useState, useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import { formatFileSize } from '../../../api';
-import { 
-  analyzeCaseDocuments, 
-  researchPrecedents, 
+import {
+  analyzeCaseDocuments,
+  researchPrecedents,
   assessCaseRisk,
   getStrategyRecommendations,
   generateCaseTimeline,
   getCaseAnalyses
 } from '../../../api/servicePlus';
 
-const CaseAnalysisTool = ({ documents }) => {
+// NEW props: selectedClientId, clients
+const CaseAnalysisTool = ({ documents, selectedClientId, clients = [] }) => {
   const [selectedDocuments, setSelectedDocuments] = useState([]);
   const [analysisType, setAnalysisType] = useState('case-strategy');
   const [analyzing, setAnalyzing] = useState(false);
@@ -19,7 +21,7 @@ const CaseAnalysisTool = ({ documents }) => {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
   const [recentAnalyses, setRecentAnalyses] = useState([]);
-  
+
   const [caseContext, setCaseContext] = useState({
     clientPosition: '',
     opposingParty: '',
@@ -31,7 +33,15 @@ const CaseAnalysisTool = ({ documents }) => {
     timeline: 'medium'
   });
 
+  // Documents already pre-filtered by parent (user + optional client).
+  // Only show analyzed ones here.
   const analyzedDocs = documents.filter(doc => doc.status === 'Analyzed');
+
+  // Helper: get client name for a doc
+  const getClientName = (clientId) => {
+    if (!clientId) return null;
+    return clients.find(c => c.id === clientId || String(c.id) === String(clientId))?.name || `Client #${clientId}`;
+  };
 
   // Load recent analyses
   useEffect(() => {
@@ -43,9 +53,15 @@ const CaseAnalysisTool = ({ documents }) => {
         console.warn('Could not load recent analyses:', err);
       }
     };
-
     fetchRecentAnalyses();
   }, [analysisResult]);
+
+  // Clear selected docs if the client filter changes and selected docs are no longer in view
+  useEffect(() => {
+    setSelectedDocuments(prev =>
+      prev.filter(id => analyzedDocs.some(d => d.id.toString() === id))
+    );
+  }, [selectedClientId]);
 
   const analysisTypes = [
     {
@@ -64,52 +80,41 @@ const CaseAnalysisTool = ({ documents }) => {
       icon: 'Search',
       complexity: 'Advanced',
       estimatedTime: '3-5 minutes',
-      fields: ['legalIssues', 'jurisdiction', 'caseType']
+      fields: ['legalIssues']
     },
     {
       id: 'risk-assessment',
       name: 'Risk Assessment',
-      description: 'Comprehensive analysis of potential risks, outcomes, and mitigation strategies',
+      description: 'Comprehensive risk analysis with probability modeling and mitigation strategies',
       icon: 'AlertTriangle',
       complexity: 'Advanced',
-      estimatedTime: '3-5 minutes',
-      fields: ['clientPosition', 'legalIssues', 'opposingParty', 'timeline']
+      estimatedTime: '4-7 minutes',
+      fields: ['clientPosition', 'legalIssues']
     },
     {
-      id: 'document-gaps',
-      name: 'Evidence Gap Analysis',
-      description: 'Identify missing evidence, documentation, and strengthen weak points',
-      icon: 'FileSearch',
-      complexity: 'Medium',
-      estimatedTime: '2-3 minutes',
-      fields: ['caseType', 'legalIssues', 'clientPosition']
+      id: 'evidence-analysis',
+      name: 'Evidence Analysis',
+      description: 'Analyze evidence strength, gaps, and documentation requirements',
+      icon: 'Search',
+      complexity: 'Standard',
+      estimatedTime: '3-5 minutes',
+      fields: ['clientPosition', 'legalIssues']
     },
     {
       id: 'settlement-analysis',
       name: 'Settlement Analysis',
-      description: 'Evaluate settlement opportunities and negotiate optimal terms',
-      icon: 'HandShake',
-      complexity: 'Expert',
-      estimatedTime: '5-8 minutes',
-      fields: ['clientPosition', 'opposingParty', 'desiredOutcome', 'budgetRange']
+      description: 'Evaluate settlement opportunities and negotiation strategies',
+      icon: 'Handshake',
+      complexity: 'Advanced',
+      estimatedTime: '4-6 minutes',
+      fields: ['clientPosition', 'opposingParty', 'desiredOutcome']
     }
   ];
 
   const caseTypes = [
-    'Contract Dispute',
-    'Employment Law',
-    'Personal Injury',
-    'Corporate Law',
-    'Intellectual Property',
-    'Real Estate',
-    'Family Law',
-    'Criminal Defense',
-    'Immigration',
-    'Tax Law',
-    'Environmental Law',
-    'Securities Law',
-    'Bankruptcy',
-    'Medical Malpractice'
+    'Contract Dispute', 'Personal Injury', 'Employment Law', 'Intellectual Property',
+    'Real Estate', 'Corporate Law', 'Criminal Defense', 'Family Law',
+    'Immigration', 'Bankruptcy', 'Civil Rights', 'Other'
   ];
 
   const jurisdictions = [
@@ -137,13 +142,21 @@ const CaseAnalysisTool = ({ documents }) => {
     { value: 'long', label: 'Long-term (18+ months)' }
   ];
 
+  const getComplexityColor = (complexity) => {
+    switch (complexity) {
+      case 'Expert': return 'bg-red-100 text-red-800';
+      case 'Advanced': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-blue-100 text-blue-800';
+    }
+  };
+
   const handleDocumentSelection = (docId) => {
     setSelectedDocuments(prev =>
-      prev.includes(docId)
-        ? prev.filter(id => id !== docId)
-        : [...prev, docId]
+      prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
     );
   };
+
+  const getCurrentAnalysisType = () => analysisTypes.find(type => type.id === analysisType);
 
   const simulateProgress = () => {
     setProgress(15);
@@ -158,14 +171,9 @@ const CaseAnalysisTool = ({ documents }) => {
       return;
     }
 
-    const getCurrentAnalysisType = () => {
-      return analysisTypes.find(type => type.id === analysisType);
-    };
-
     const currentAnalysisType = getCurrentAnalysisType();
     const requiredFields = currentAnalysisType?.fields || [];
-    
-    // Validate required fields
+
     const missingFields = requiredFields.filter(field => {
       const value = caseContext[field];
       return !value || (typeof value === 'string' && value.trim() === '');
@@ -180,78 +188,53 @@ const CaseAnalysisTool = ({ documents }) => {
     setError(null);
     setAnalysisResult(null);
     setProgress(0);
-    
     simulateProgress();
 
     try {
-      let result;
-
-      if (analysisType === 'precedent-research') {
-        // For precedent research, extract legal issues from context
-        const legalIssuesArray = caseContext.legalIssues 
-          ? caseContext.legalIssues.split(',').map(issue => issue.trim())
-          : [caseContext.caseType];
-
-        result = await researchPrecedents(
-          legalIssuesArray,
-          caseContext.jurisdiction,
-          caseContext.caseType
-        );
+    let result;
+    
+    if (analysisType === 'precedent-research') {
+      const legalIssuesArray = caseContext.legalIssues
+        ? caseContext.legalIssues.split(',').map(issue => issue.trim())
+        : [caseContext.caseType];
+      // ✅ CORRECT ORDER: documentIds, analysisType, caseContext
+      result = await researchPrecedents(legalIssuesArray, caseContext.jurisdiction, caseContext.caseType);
+      result.analysis_type = analysisType;
+      
+    } else if (analysisType === 'risk-assessment') {
+      // ✅ CORRECT ORDER: documentIds, caseContext, practiceArea
+      result = await assessCaseRisk(selectedDocuments, caseContext);
+      result.analysis_type = analysisType;
+      
+    } else if (analysisType === 'settlement-analysis') {
+      // ✅ CORRECT ORDER: documentIds, caseContext, analysisType
+      result = await analyzeSettlementOpportunities?.(selectedDocuments, caseContext) ||
+        await analyzeCaseDocuments(selectedDocuments, analysisType, caseContext);
         
-        result.analysis_type = analysisType;
-        result.analysis_id = `precedent_${Date.now()}`;
-      } else if (analysisType === 'risk-assessment') {
-        // For risk assessment
-        const legalIssuesArray = caseContext.legalIssues 
-          ? caseContext.legalIssues.split(',').map(issue => issue.trim())
-          : [caseContext.caseType];
-
-        result = await assessCaseRisk(legalIssuesArray, caseContext, 'litigation');
-        result.analysis_type = analysisType;
-        result.analysis_id = `risk_${Date.now()}`;
-      } else {
-        // For comprehensive case analysis
-        result = await analyzeCaseDocuments(
-          selectedDocuments.map(id => parseInt(id)),
-          analysisType,
-          caseContext
-        );
-      }
-
-      setProgress(100);
-      setTimeout(() => {
-        setAnalysisResult(result);
-      }, 500);
-
-    } catch (err) {
-      console.error('Case analysis error:', err);
-      setError(err.message || 'Case analysis failed. Please try again.');
-      setProgress(0);
-    } finally {
-      setTimeout(() => {
-        setAnalyzing(false);
-        setProgress(0);
-      }, 1000);
+    } else {
+      // ✅ MAIN FIX: CORRECT ORDER - documentIds, analysisType, caseContext
+      result = await analyzeCaseDocuments(selectedDocuments, analysisType, caseContext);
     }
-  };
+    
+    setProgress(100);
+    setTimeout(() => setAnalysisResult(result), 500);
+    
+  } catch (err) {
+    console.error('Analysis error:', err);
+    setError(err.message || 'Analysis failed. Please try again.');
+    setProgress(0);
+  } finally {
+    setTimeout(() => {
+      setAnalyzing(false);
+      setProgress(0);
+    }, 1000);
+  }
+};
 
   const resetAnalysis = () => {
     setAnalysisResult(null);
     setError(null);
     setProgress(0);
-  };
-
-  const getCurrentAnalysisType = () => {
-    return analysisTypes.find(type => type.id === analysisType);
-  };
-
-  const getComplexityColor = (complexity) => {
-    switch (complexity) {
-      case 'Medium': return 'bg-yellow-100 text-yellow-800';
-      case 'Advanced': return 'bg-orange-100 text-orange-800';
-      case 'Expert': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
   };
 
   const renderAnalysisResults = () => {
@@ -269,7 +252,6 @@ const CaseAnalysisTool = ({ documents }) => {
           </div>
         </div>
 
-        {/* Analysis Type and Status */}
         <div className="bg-green-50 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <h4 className="font-semibold text-green-900">
@@ -280,12 +262,11 @@ const CaseAnalysisTool = ({ documents }) => {
             </span>
           </div>
           <p className="text-sm text-green-700">
-            Analyzed {analysisResult.documents_analyzed || selectedDocuments.length} document(s) 
+            Analyzed {analysisResult.documents_analyzed || selectedDocuments.length} document(s)
             {analysisResult.completed_at && ` on ${new Date(analysisResult.completed_at).toLocaleString()}`}
           </p>
         </div>
 
-        {/* Legal Issues */}
         {analysisResult.legal_issues && analysisResult.legal_issues.length > 0 && (
           <div>
             <h4 className="font-semibold text-text-primary mb-3 flex items-center space-x-2">
@@ -302,7 +283,6 @@ const CaseAnalysisTool = ({ documents }) => {
           </div>
         )}
 
-        {/* Precedents */}
         {analysisResult.precedents && analysisResult.precedents.length > 0 && (
           <div>
             <h4 className="font-semibold text-text-primary mb-3 flex items-center space-x-2">
@@ -329,7 +309,6 @@ const CaseAnalysisTool = ({ documents }) => {
           </div>
         )}
 
-        {/* Risk Assessment */}
         {analysisResult.risks && analysisResult.risks.length > 0 && (
           <div>
             <h4 className="font-semibold text-text-primary mb-3 flex items-center space-x-2">
@@ -343,14 +322,11 @@ const CaseAnalysisTool = ({ documents }) => {
                   'medium': 'bg-yellow-50 border-yellow-300 text-yellow-800',
                   'low': 'bg-green-50 border-green-300 text-green-800'
                 }[risk.severity_level] || 'bg-gray-50 border-gray-300 text-gray-800';
-
                 return (
                   <div key={index} className={`p-3 border rounded-lg ${severityColor}`}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">{risk.factor_name}</span>
-                      <span className="text-xs px-2 py-1 bg-white rounded">
-                        {risk.severity_level} severity
-                      </span>
+                      <span className="text-xs px-2 py-1 bg-white rounded">{risk.severity_level} severity</span>
                     </div>
                     <p className="text-sm mb-2">{risk.description}</p>
                     {risk.mitigation_strategies && (
@@ -365,26 +341,18 @@ const CaseAnalysisTool = ({ documents }) => {
           </div>
         )}
 
-        {/* Strategic Recommendations */}
         {analysisResult.recommendations && (
           <div>
             <h4 className="font-semibold text-text-primary mb-3 flex items-center space-x-2">
-              <Icon name="Lightbulb" size={16} className="text-amber-600" />
+              <Icon name="Lightbulb" size={16} className="text-yellow-600" />
               <span>Strategic Recommendations</span>
-              <span className="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded-full">
-                AI Generated
-              </span>
             </h4>
-            <div className="bg-amber-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-              <div className="prose max-w-none text-sm text-amber-900">
-                {analysisResult.recommendations.split('\n').map((paragraph, index) => (
-                  paragraph.trim() && (
-                    <p key={index} className="mb-3 leading-relaxed">
-                      {paragraph.trim()}
-                    </p>
-                  )
-                ))}
-              </div>
+            <div className="bg-yellow-50 rounded-lg p-4">
+              <p className="text-sm text-yellow-900 leading-relaxed whitespace-pre-wrap">
+                {typeof analysisResult.recommendations === 'string'
+                  ? analysisResult.recommendations
+                  : JSON.stringify(analysisResult.recommendations, null, 2)}
+              </p>
             </div>
           </div>
         )}
@@ -394,41 +362,17 @@ const CaseAnalysisTool = ({ documents }) => {
 
   return (
     <div className="space-y-6">
-      {/* Feature Status Banner */}
-      <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
-        <div className="flex items-center space-x-3 mb-3">
-          <Icon name="CheckCircle" size={24} className="text-green-600" />
-          <h3 className="text-lg font-semibold text-green-800">AI Case Analysis - Now Available</h3>
-        </div>
-        <p className="text-green-700 mb-4">
-          Advanced AI-powered legal case analysis is now operational with these capabilities:
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <ul className="list-disc list-inside text-green-700 space-y-1">
-            <li>Multi-document case strategy development</li>
-            <li>Automated legal precedent research</li>
-            <li>Risk assessment with mitigation strategies</li>
-            <li>Evidence gap identification</li>
-          </ul>
-          <ul className="list-disc list-inside text-green-700 space-y-1">
-            <li>Settlement opportunity analysis</li>
-            <li>AI-powered strategic recommendations</li>
-            <li>Case timeline and procedural guidance</li>
-            <li>Comprehensive analysis reports</li>
-          </ul>
-        </div>
-      </div>
 
       {/* Analysis Type Selection */}
-      <div>
-        <h3 className="text-lg font-semibold text-text-primary mb-4">Analysis Type</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="bg-surface border border-border-light rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-text-primary mb-4">Select Analysis Type</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {analysisTypes.map((type) => (
             <div
               key={type.id}
-              className={`p-4 border rounded-lg transition-all duration-200 cursor-pointer ${
+              className={`p-4 border rounded-lg cursor-pointer transition-all duration-200 ${
                 analysisType === type.id
-                  ? 'border-primary bg-blue-50 ring-2 ring-primary ring-opacity-20'
+                  ? 'border-primary bg-blue-50'
                   : 'border-border-medium hover:border-primary'
               }`}
               onClick={() => setAnalysisType(type.id)}
@@ -453,18 +397,30 @@ const CaseAnalysisTool = ({ documents }) => {
         </div>
       </div>
 
-      {/* Document Selection */}
+      {/* ── Select Case Documents ── */}
       <div>
-        <h3 className="text-lg font-semibold text-text-primary mb-4">
-          Select Case Documents ({selectedDocuments.length} selected)
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-text-primary">
+            Select Case Documents ({selectedDocuments.length} selected)
+          </h3>
+          {/* Show active filter label */}
+          {selectedClientId && (
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full font-medium">
+              Showing:{' '}
+              {clients.find(c => String(c.id) === String(selectedClientId))?.name || `Client #${selectedClientId}`}
+            </span>
+          )}
+        </div>
+
         <div className="bg-surface border border-border-light rounded-lg p-4">
           {analyzedDocs.length === 0 ? (
             <div className="text-center py-8">
               <Icon name="FileX" size={32} className="text-text-secondary mx-auto mb-3" />
               <h4 className="font-medium text-text-primary mb-2">No Analyzed Documents Available</h4>
               <p className="text-text-secondary text-sm">
-                Upload and analyze documents first to use case analysis features.
+                {selectedClientId
+                  ? `No analyzed documents found for ${getClientName(selectedClientId) || 'this client'}. Try selecting a different client or clear the filter.`
+                  : 'Upload and analyze documents first to use case analysis features.'}
               </p>
             </div>
           ) : (
@@ -485,16 +441,20 @@ const CaseAnalysisTool = ({ documents }) => {
                     onChange={() => handleDocumentSelection(doc.id.toString())}
                     className="rounded border-border-medium"
                   />
-                  <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
+                  <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center shrink-0">
                     <Icon name="FileText" size={16} className="text-blue-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">
-                      {doc.filename}
-                    </p>
+                    <p className="text-sm font-medium text-text-primary truncate">{doc.filename}</p>
                     <p className="text-xs text-text-secondary">
                       {doc.type || 'Document'} • {formatFileSize(doc.size)}
                     </p>
+                    {/* Client badge — only shown when NOT already filtered to one client */}
+                    {!selectedClientId && doc.client_id && (
+                      <span className="inline-block mt-1 text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded truncate max-w-full">
+                        {getClientName(doc.client_id)}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -505,75 +465,56 @@ const CaseAnalysisTool = ({ documents }) => {
 
       {/* Case Context Form */}
       <div className="bg-surface border border-border-light rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-text-primary mb-4">
-          Case Context & Parameters
-        </h3>
-        
+        <h3 className="text-lg font-semibold text-text-primary mb-4">Case Context & Parameters</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Case Type
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-2">Case Type</label>
             <select
               value={caseContext.caseType}
               onChange={(e) => setCaseContext(prev => ({ ...prev, caseType: e.target.value }))}
               className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {caseTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
+                <option key={type} value={type}>{type}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Jurisdiction
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-2">Jurisdiction</label>
             <select
               value={caseContext.jurisdiction}
               onChange={(e) => setCaseContext(prev => ({ ...prev, jurisdiction: e.target.value }))}
               className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {jurisdictions.map((jurisdiction) => (
-                <option key={jurisdiction.value} value={jurisdiction.value}>
-                  {jurisdiction.label}
-                </option>
+                <option key={jurisdiction.value} value={jurisdiction.value}>{jurisdiction.label}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Budget Range
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-2">Budget Range</label>
             <select
               value={caseContext.budgetRange}
               onChange={(e) => setCaseContext(prev => ({ ...prev, budgetRange: e.target.value }))}
               className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {budgetRanges.map((budget) => (
-                <option key={budget.value} value={budget.value}>
-                  {budget.label}
-                </option>
+                <option key={budget.value} value={budget.value}>{budget.label}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Timeline
-            </label>
+            <label className="block text-sm font-medium text-text-secondary mb-2">Timeline</label>
             <select
               value={caseContext.timeline}
               onChange={(e) => setCaseContext(prev => ({ ...prev, timeline: e.target.value }))}
               className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
             >
               {timelineOptions.map((timeline) => (
-                <option key={timeline.value} value={timeline.value}>
-                  {timeline.label}
-                </option>
+                <option key={timeline.value} value={timeline.value}>{timeline.label}</option>
               ))}
             </select>
           </div>
@@ -693,10 +634,10 @@ const CaseAnalysisTool = ({ documents }) => {
               />
             </div>
             <div className="mt-2 text-xs text-text-secondary">
-              {progress < 35 && "Analyzing document content and extracting legal issues..."}
-              {progress >= 35 && progress < 60 && "Researching relevant precedents and case law..."}
-              {progress >= 60 && progress < 85 && "Assessing risks and generating strategic insights..."}
-              {progress >= 85 && "Finalizing analysis and recommendations..."}
+              {progress < 35 && 'Analyzing document content and extracting legal issues...'}
+              {progress >= 35 && progress < 60 && 'Researching relevant precedents and case law...'}
+              {progress >= 60 && progress < 85 && 'Assessing risks and generating strategic insights...'}
+              {progress >= 85 && 'Finalizing analysis and recommendations...'}
             </div>
           </div>
         )}
@@ -738,57 +679,51 @@ const CaseAnalysisTool = ({ documents }) => {
         </div>
       )}
 
-      {/* Feature Capabilities Summary */}
+      {/* AI Capabilities Summary */}
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-blue-800 mb-4 flex items-center space-x-2">
           <Icon name="Zap" size={20} />
           <span>AI Case Analysis Capabilities</span>
         </h3>
-        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-blue-800 mb-2">Analysis Features:</h4>
-              <ul className="list-disc list-inside text-blue-700 text-sm space-y-1">
-                <li>Multi-document legal issue extraction</li>
-                <li>Automated precedent research with relevance scoring</li>
-                <li>Comprehensive risk assessment and mitigation</li>
-                <li>AI-powered strategic recommendations</li>
-                <li>Settlement opportunity analysis</li>
-                <li>Evidence gap identification</li>
-              </ul>
-            </div>
+          <div>
+            <h4 className="font-medium text-blue-800 mb-2">Analysis Features:</h4>
+            <ul className="list-disc list-inside text-blue-700 text-sm space-y-1">
+              <li>Multi-document legal issue extraction</li>
+              <li>Automated precedent research with relevance scoring</li>
+              <li>Comprehensive risk assessment and mitigation</li>
+              <li>AI-powered strategic recommendations</li>
+              <li>Settlement opportunity analysis</li>
+              <li>Evidence gap identification</li>
+            </ul>
           </div>
-          
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-blue-800 mb-2">Supported Analysis Types:</h4>
-              <ul className="list-disc list-inside text-blue-700 text-sm space-y-1">
-                <li>Comprehensive case strategy development</li>
-                <li>Legal precedent research and analysis</li>
-                <li>Risk assessment with probability modeling</li>
-                <li>Evidence and documentation gap analysis</li>
-                <li>Settlement negotiation strategy</li>
-              </ul>
-            </div>
+          <div>
+            <h4 className="font-medium text-blue-800 mb-2">Supported Analysis Types:</h4>
+            <ul className="list-disc list-inside text-blue-700 text-sm space-y-1">
+              <li>Comprehensive case strategy development</li>
+              <li>Legal precedent research and analysis</li>
+              <li>Risk assessment with probability modeling</li>
+              <li>Evidence and documentation gap analysis</li>
+              <li>Settlement negotiation strategy</li>
+            </ul>
           </div>
         </div>
-
         <div className="mt-6 p-4 bg-blue-100 rounded-lg">
           <div className="flex items-start space-x-3">
             <Icon name="Info" size={20} className="text-blue-700 mt-0.5" />
             <div>
               <h4 className="font-medium text-blue-800 mb-2">How It Works</h4>
               <p className="text-sm text-blue-700 leading-relaxed">
-                The AI case analysis system processes your uploaded documents using advanced natural language processing 
-                to extract legal issues, searches a database of legal precedents for relevant cases, assesses potential 
-                risks using established legal frameworks, and generates strategic recommendations using Gemini AI. 
+                The AI case analysis system processes your uploaded documents using advanced natural language processing
+                to extract legal issues, searches a database of legal precedents for relevant cases, assesses potential
+                risks using established legal frameworks, and generates strategic recommendations using Gemini AI.
                 All analysis is performed with consideration for jurisdiction-specific legal requirements and best practices.
               </p>
             </div>
           </div>
         </div>
       </div>
+
     </div>
   );
 };
