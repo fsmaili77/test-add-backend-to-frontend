@@ -184,11 +184,11 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
     }).length;
 
     // Calculate average processing time from analysis_duration_ms
-    const analyzedDocs = documents.filter(d => d.analysis_duration_ms);
+    const analyzedDocs = documents.filter(d => d.analysis_duration_ms > 0);
     const avgDurationMs = analyzedDocs.length > 0 
       ? analyzedDocs.reduce((sum, doc) => sum + doc.analysis_duration_ms, 0) / analyzedDocs.length
-      : 0;
-    const processingTime = avgDurationMs > 0 ? `${(avgDurationMs / 1000).toFixed(1)} sec` : '0 sec';
+      : null;
+    const processingTime = avgDurationMs !== null ? `${(avgDurationMs / 1000).toFixed(1)} sec` : 'N/A';
     
     const successRate = totalDocuments > 0 
       ? ((documents.filter(d => d.status === 'Analyzed').length / totalDocuments) * 100).toFixed(1)
@@ -496,7 +496,9 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
-                                {document.uploadedAt ? new Date(document.uploadedAt).toLocaleDateString() : 'Unknown'}
+                                {(document.creation_date || document.uploadedAt) 
+                                  ? new Date(document.creation_date || document.uploadedAt).toLocaleDateString() 
+                                  : 'Unknown'}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 {getStatusBadge(document.status, document.analysisProgress)}
@@ -509,8 +511,9 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
                                 <span className="capitalize">
-                                  {document.type === 'auto' ? 'Auto-detect' : 
-                                   document.type?.split('_').join(' ') || 'Unknown'}
+                                  {(document.document_type || document.type) === 'auto' 
+                                    ? 'Auto-detect' 
+                                    : (document.document_type || document.type)?.split('_').join(' ') || 'Unknown'}
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">

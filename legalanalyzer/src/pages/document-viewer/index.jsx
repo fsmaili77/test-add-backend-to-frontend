@@ -450,7 +450,11 @@ const DocumentViewer = () => {
             <div className="p-3 bg-gray-50 rounded-lg">
               <div className="text-xs text-text-secondary mb-1">Upload Date</div>
               <div className="text-sm font-medium text-text-primary">
-                {selectedDocument.uploadedAt ? new Date(selectedDocument.uploadedAt).toLocaleDateString() : 'Unknown'}
+                {selectedDocument.creation_date 
+                  ? new Date(selectedDocument.creation_date).toLocaleDateString() 
+                  : selectedDocument.uploadedAt 
+                    ? new Date(selectedDocument.uploadedAt).toLocaleDateString() 
+                    : 'Unknown'}
               </div>
             </div>
           </div>
@@ -537,7 +541,11 @@ const DocumentViewer = () => {
                   <div>
                     <dt className="font-medium text-text-primary">Document Type</dt>
                     <dd className="text-text-secondary capitalize">
-                      {selectedDocument.type?.replace('_', ' ') || 'Unknown'}
+                      {(selectedDocument.document_type || selectedDocument.type)
+                        ?.replace(/_/g, ' ')
+                        ?.split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                        .join(' ') || 'Unknown'}
                     </dd>
                   </div>
                   <div>
@@ -553,7 +561,9 @@ const DocumentViewer = () => {
                   <div>
                     <dt className="font-medium text-text-primary">Upload Date</dt>
                     <dd className="text-text-secondary">
-                      {selectedDocument.uploadedAt ? new Date(selectedDocument.uploadedAt).toLocaleDateString() : 'Unknown'}
+                      {(selectedDocument.creation_date || selectedDocument.uploadedAt) 
+                        ? new Date(selectedDocument.creation_date || selectedDocument.uploadedAt).toLocaleDateString() 
+                        : 'Unknown'}
                     </dd>
                   </div>
                   <div>
@@ -621,7 +631,11 @@ const DocumentViewer = () => {
                       <div className="p-4 bg-gray-50 rounded-lg">
                         <h4 className="font-medium text-text-primary mb-2">Document Classification</h4>
                         <p className="text-sm text-text-secondary capitalize">
-                          {selectedDocument.type?.replace('_', ' ') || 'Auto-detected'}
+                          {(selectedDocument.document_type || selectedDocument.type)
+                            ?.replace(/_/g, ' ')
+                            ?.split(' ')
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ') || 'Auto-detected'}
                         </p>
                         <p className="text-xs text-text-secondary mt-1">
                           Confidence: {selectedDocument.status === 'Analyzed' ? '95%' : '85%'}
