@@ -468,7 +468,7 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                               </div>
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                              {texts.language || 'Language'}
+                              LANGUAGE
                             </th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
                               {texts.actions || 'Actions'}
@@ -486,9 +486,13 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                                     </div>
                                   </div>
                                   <div className="ml-4">
-                                    <div className="text-sm font-medium text-text-primary truncate max-w-xs" title={document.filename}>
+                                    <Link
+                                      to={`/document-viewer?doc=${encodeURIComponent(document.id)}`}
+                                      className="text-sm font-medium text-text-primary truncate max-w-xs block hover:text-primary hover:underline cursor-pointer"
+                                      title="View the Document"
+                                    >
                                       {document.filename}
-                                    </div>
+                                    </Link>
                                     <div className="text-xs text-text-secondary">
                                       {document.fileExtension}
                                     </div>
@@ -510,11 +514,14 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                                 )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
-                                <span className="capitalize">
-                                  {(document.document_type || document.type) === 'auto' 
-                                    ? 'Auto-detect' 
-                                    : (document.document_type || document.type)?.split('_').join(' ') || 'Unknown'}
-                                </span>
+                                {(() => {
+                                  const rawType = document.type === 'auto' ? 'Auto-detect' : document.type?.replace(/_/g, ' ') || 'Unknown';
+                                  return (
+                                    <span className="capitalize" title={rawType}>
+                                      {rawType.length > 35 ? `${rawType.slice(0, 35)}...` : rawType}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
                                 <span className="font-medium">
@@ -534,10 +541,20 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                                     <Icon name="Eye" size={16}/>
                                   </Link>
                                   <button
-                                    onClick={() => handleAnalyze(document.id, true)}
+                                    onClick={() => {
+                                      if (document.status === 'Analyzed') {
+                                        // ✅ Directly open viewer if already analyzed
+                                        navigate(`/document-viewer?doc=${encodeURIComponent(document.id)}&view=analysis`);
+                                      } else {
+                                        // ✅ Trigger analysis if not yet analyzed
+                                        handleAnalyze(document.id, true);
+                                      }
+                                    }}
                                     disabled={analyzingDocument === document.id}
                                     className="text-accent hover:text-amber-600 p-1 rounded hover:bg-amber-50 disabled:opacity-50"
-                                    title={document.hasAdvancedAnalysis ? texts.viewAnalyzedDocument || 'View Analysis' : texts.analyzeDocument || 'Analyze Document'}
+                                    title={document.status === 'Analyzed' 
+                                      ? (texts.viewAnalyzedDocument || 'View Analysis') 
+                                      : (texts.analyzeDocument || 'Analyze Document')}
                                   >
                                     {analyzingDocument === document.id ? (
                                       <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
