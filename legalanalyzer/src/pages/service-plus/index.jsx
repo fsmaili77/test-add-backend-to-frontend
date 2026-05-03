@@ -13,19 +13,12 @@ import { useLanguage } from 'contexts/LanguageContext';
 import { checkMicroservicesHealth } from '../../api';
 import { useServicePlusStats } from './hooks/useServicePlusStats';
 import CaseAnalysisHistory from './components/CaseAnalysisHistory';
-
-// Reuse the same apiService your app already uses everywhere.
-// ClientContext.jsx already imports from here — we do the same.
 import { getUserIdFromToken } from '../../services/apiService';
 
-// Flask runs on port 3001 (same as servicePlus.js uses)
 const API_BASE_URL =
   window.API_BASE_URL ||
   (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : '/api');
 
-// Read the JWT from storage using the same keys your app uses.
-// Check DevTools → Application → Local Storage → localhost:5173
-// to confirm which key holds a JWT (long string starting with "ey").
 const getToken = () =>
   localStorage.getItem('authToken') ||
   localStorage.getItem('token') ||
@@ -61,8 +54,6 @@ const fetchClients = async () => {
   return response.json();
 };
 
-// Flask's /documents endpoint REQUIRES ?clientId= for non-admin users —
-// without it the backend intentionally returns [].
 const fetchDocumentsForClient = async (clientId) => {
   const response = await fetch(`${API_BASE_URL}/documents?clientId=${clientId}`, {
     method: 'GET',
@@ -74,34 +65,27 @@ const fetchDocumentsForClient = async (clientId) => {
     throw new Error(`/documents returned ${response.status}: ${text.slice(0, 200)}`);
   }
   const data = await response.json();
-  // Normalize Flask field names to match what DocumentComparisonTool expects
   const arr = Array.isArray(data) ? data : [];
   return arr.map(doc => ({
     ...doc,
-    // Flask returns 'filename', frontend comparison tool may expect 'name'
     name: doc.filename || doc.original_name || doc.title || doc.id,
-    uploadedAt: doc.creation_date,    // normalize date field
-    size: doc.file_size,              // normalize size field
-    type: doc.document_type,          // normalize type field
+    uploadedAt: doc.creation_date,
+    size: doc.file_size,
+    type: doc.document_type,
     hasAdvancedAnalysis: doc.status === 'Analyzed',
   }));
 };
 
-// ---------------------------------------------------------------------------
-
 const ServicePlus = () => {
   const { texts } = useLanguage();
-
   const [activeTab, setActiveTab] = useState('comparison');
   const [documents, setDocuments] = useState([]);
   const [backendHealth, setBackendHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [docsLoading, setDocsLoading] = useState(false);
   const [error, setError] = useState(null);
-
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-
   const { stats, health: servicePlusHealth, updateStats } = useServicePlusStats();
 
   const checkServicePlusHealth = async () => {
@@ -119,18 +103,14 @@ const ServicePlus = () => {
     }
   };
 
-  // On mount: load clients + health
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-
-      // Debug — logs which token key was found so you can verify
       const tok = getToken();
       console.log(
         '[ServicePlus] auth token:',
         tok ? `found (${tok.slice(0, 20)}...)` : 'NOT FOUND — check localStorage key'
       );
-
       try {
         const [clientsList, health, spHealth] = await Promise.all([
           fetchClients().catch((err) => {
@@ -143,17 +123,13 @@ const ServicePlus = () => {
             service_plus: false,
           })),
         ]);
-
         console.log('[ServicePlus] clients loaded:', clientsList);
-
         setClients(clientsList);
         setBackendHealth({
           ...health,
           service_plus_status: spHealth.overall_status,
           service_plus_available: spHealth.service_plus,
         });
-
-        // Restore previously selected client (persisted by ClientContext)
         const saved = localStorage.getItem('selectedClientId');
         if (saved && clientsList.some((c) => String(c.id) === saved)) {
           setSelectedClientId(saved);
@@ -167,21 +143,17 @@ const ServicePlus = () => {
         setLoading(false);
       }
     };
-
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load documents whenever the selected client changes
   useEffect(() => {
     if (!selectedClientId) {
       setDocuments([]);
       updateStats({ availableDocuments: 0 });
       return;
     }
-
     localStorage.setItem('selectedClientId', selectedClientId);
-
     const loadDocs = async () => {
       setDocsLoading(true);
       try {
@@ -197,7 +169,6 @@ const ServicePlus = () => {
         setDocsLoading(false);
       }
     };
-
     loadDocs();
   }, [selectedClientId, updateStats]);
 
@@ -207,40 +178,39 @@ const ServicePlus = () => {
   const tabs = [
     {
       id: 'comparison',
-      name: 'Document Comparison',
+      name: texts.documentComparison,
       icon: 'GitCompare',
-      description: 'Compare two versions of legal documents using AI semantic analysis',
+      description: texts.documentComparisonDesc,
       available: true,
     },
     {
       id: 'history',
-      name: 'Comparison History',
+      name: texts.comparisonHistory,
       icon: 'History',
-      description: 'View and manage past document comparisons with detailed analytics',
+      description: texts.comparisonHistoryDesc,
       available: true,
     },
     {
       id: 'generation',
-      name: 'Document Generation',
+      name: texts.documentGeneration,
       icon: 'FileText',
-      description: 'Generate legal documents using AI templates and compliance validation',
+      description: texts.documentGenerationDesc,
       available: true,
       comingSoon: false,
     },
     {
       id: 'case-analysis',
-      name: 'Case Analysis',
+      name: texts.caseAnalysis,
       icon: 'Brain',
-      description:
-        'AI-powered legal case analysis with precedent research and strategic recommendations',
+      description: texts.caseAnalysisDesc,
       available: true,
       comingSoon: false,
     },
     {
       id: 'analysis-history',
-      name: 'Analysis History',
+      name: texts.analysisHistory,
       icon: 'History',
-      description: 'View and manage past case analyses with export options',
+      description: texts.analysisHistoryDesc,
       available: true,
     },
   ];
@@ -262,7 +232,7 @@ const ServicePlus = () => {
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-text-secondary">Loading Service+ tools...</p>
+                <p className="text-text-secondary">{texts.loadingServiceTools}</p>
               </div>
             </div>
           </div>
@@ -282,13 +252,12 @@ const ServicePlus = () => {
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h1 className="text-3xl font-bold text-text-primary">
-                Service Plus Advanced Tools
+                {texts.servicePlusTitle}
               </h1>
               <p className="text-text-secondary">
-                Advanced legal document processing and AI-powered analysis suite
+                {texts.servicePlusSubtitle}
               </p>
             </div>
-
             {backendHealth && (
               <div className="flex flex-col space-y-2">
                 <div
@@ -304,7 +273,7 @@ const ServicePlus = () => {
                     }`}
                   />
                   <span>
-                    Backend: {backendHealth.overall_status === 'healthy' ? 'Online' : 'Issues'}
+                    {texts.backend}: {backendHealth.overall_status === 'healthy' ? texts.statusOnline : texts.statusIssues}
                   </span>
                 </div>
                 <div
@@ -320,7 +289,7 @@ const ServicePlus = () => {
                     }`}
                   />
                   <span>
-                    Service+: {backendHealth.service_plus_available ? 'Ready' : 'Limited'}
+                    {texts.servicePlusShort}: {backendHealth.service_plus_available ? texts.statusReady : texts.statusLimited}
                   </span>
                 </div>
               </div>
@@ -332,7 +301,7 @@ const ServicePlus = () => {
               <div className="flex items-center space-x-2">
                 <Icon name="AlertCircle" size={20} className="text-red-600" />
                 <div>
-                  <h3 className="font-medium text-red-800">Service Error</h3>
+                  <h3 className="font-medium text-red-800">{texts.serviceError}</h3>
                   <p className="text-sm text-red-700">{error}</p>
                 </div>
               </div>
@@ -346,9 +315,8 @@ const ServicePlus = () => {
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center space-x-2 shrink-0">
                 <Icon name="Users" size={18} className="text-primary" />
-                <span className="text-sm font-medium text-text-primary">Filter by client:</span>
+                <span className="text-sm font-medium text-text-primary">{texts.filterByClient}</span>
               </div>
-
               <select
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
@@ -356,45 +324,43 @@ const ServicePlus = () => {
                            bg-background focus:outline-none focus:ring-2 focus:ring-accent
                            min-w-[220px]"
               >
-                <option value="">— Select a client —</option>
+                <option value="">{texts.selectClientPlaceholder}</option>
                 {clients.map((client) => (
                   <option key={client.id} value={String(client.id)}>
                     {client.name}
                   </option>
                 ))}
               </select>
-
               {selectedClientId && (
                 <button
                   onClick={() => setSelectedClientId('')}
                   className="flex items-center space-x-1 text-xs text-text-secondary hover:text-text-primary transition-colors"
                 >
                   <Icon name="X" size={12} />
-                  <span>Clear</span>
+                  <span>{texts.clear}</span>
                 </button>
               )}
-
               <span className="text-xs text-text-secondary ml-auto">
                 {docsLoading ? (
                   <span className="flex items-center space-x-1">
                     <span className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin inline-block" />
-                    <span>Loading documents...</span>
+                    <span>{texts.loadingDocuments}</span>
                   </span>
                 ) : selectedClientId ? (
                   <>
                     <span className="font-medium text-text-primary">{documents.length}</span>{' '}
-                    document{documents.length !== 1 ? 's' : ''} for{' '}
+                    {texts.documentsFor}{' '}
                     <span className="font-medium text-primary">{selectedClientName}</span>
                     {documents.filter((d) => d.status === 'Analyzed').length > 0 && (
                       <span className="ml-2 text-green-600">
-                        ({documents.filter((d) => d.status === 'Analyzed').length} analyzed)
+                        ({documents.filter((d) => d.status === 'Analyzed').length} {texts.analyzed})
                       </span>
                     )}
                   </>
                 ) : clients.length === 0 ? (
-                  <span className="text-red-500">No clients found for your account</span>
+                  <span className="text-red-500">{texts.noClientsFound}</span>
                 ) : (
-                  <span className="text-amber-600">← Select a client to load their documents</span>
+                  <span className="text-amber-600">{texts.selectClientPrompt}</span>
                 )}
               </span>
             </div>
@@ -422,7 +388,7 @@ const ServicePlus = () => {
                       <span>{tab.name}</span>
                       {tab.comingSoon && (
                         <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-800">
-                          Coming Soon
+                          {texts.comingSoon}
                         </span>
                       )}
                     </div>
@@ -430,7 +396,6 @@ const ServicePlus = () => {
                 ))}
               </nav>
             </div>
-
             <div className="px-6 py-4 bg-gray-50 border-b border-border-light">
               <div className="flex items-center space-x-2">
                 <Icon name="Info" size={16} className="text-blue-600" />
@@ -439,7 +404,6 @@ const ServicePlus = () => {
                 </span>
               </div>
             </div>
-
             <div className="p-6">
               {activeTab === 'comparison' && (
                 <DocumentComparisonTool
@@ -476,7 +440,7 @@ const ServicePlus = () => {
           <div className="bg-surface rounded-lg border border-border-light p-6">
             <h3 className="text-lg font-semibold text-text-primary mb-4 flex items-center space-x-2">
               <Icon name="Zap" size={20} />
-              <span>Quick Actions</span>
+              <span>{texts.quickActions}</span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button
@@ -487,8 +451,8 @@ const ServicePlus = () => {
                   <Icon name="GitCompare" size={20} className="text-blue-600" />
                 </div>
                 <div>
-                  <h4 className="font-medium text-text-primary">New Comparison</h4>
-                  <p className="text-sm text-text-secondary">Compare document versions</p>
+                  <h4 className="font-medium text-text-primary">{texts.newComparison}</h4>
+                  <p className="text-sm text-text-secondary">{texts.newComparisonDesc}</p>
                 </div>
               </button>
               <button
@@ -499,8 +463,8 @@ const ServicePlus = () => {
                   <Icon name="Brain" size={20} className="text-purple-600" />
                 </div>
                 <div>
-                  <h4 className="font-medium text-text-primary">Analyze Case</h4>
-                  <p className="text-sm text-text-secondary">AI-powered case analysis</p>
+                  <h4 className="font-medium text-text-primary">{texts.analyzeCase}</h4>
+                  <p className="text-sm text-text-secondary">{texts.analyzeCaseDesc}</p>
                 </div>
               </button>
               <button
@@ -511,12 +475,13 @@ const ServicePlus = () => {
                   <Icon name="History" size={20} className="text-green-600" />
                 </div>
                 <div>
-                  <h4 className="font-medium text-text-primary">View History</h4>
-                  <p className="text-sm text-text-secondary">Past comparisons & analytics</p>
+                  <h4 className="font-medium text-text-primary">{texts.viewHistory}</h4>
+                  <p className="text-sm text-text-secondary">{texts.viewHistoryDesc}</p>
                 </div>
               </button>
             </div>
           </div>
+
         </div>
       </main>
     </div>

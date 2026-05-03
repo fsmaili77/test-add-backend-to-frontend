@@ -1,18 +1,22 @@
+// legalanalyzer/src/pages/search-results/components/SearchResultCard.jsx
+
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
+import { useLanguage } from 'contexts/LanguageContext';
 
 const SearchResultCard = ({ result, searchQuery }) => {
   const navigate = useNavigate();
+  const { texts } = useLanguage();
 
   const highlightText = (text, query) => {
     if (!query) return text;
-    
+
     const regex = new RegExp(`(${query})`, 'gi');
     const parts = text.split(regex);
-    
-    return parts.map((part, index) => 
+
+    return parts.map((part, index) =>
       regex.test(part) ? (
         <mark key={index} className="bg-yellow-200 px-1 rounded">
           {part}
@@ -68,7 +72,7 @@ const SearchResultCard = ({ result, searchQuery }) => {
                   {highlightText(result.title, searchQuery)}
                 </button>
               </h3>
-              
+
               <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary mb-2">
                 <span className="flex items-center space-x-1">
                   <Icon name="FileText" size={14} />
@@ -84,14 +88,14 @@ const SearchResultCard = ({ result, searchQuery }) => {
                 </span>
                 <span className="flex items-center space-x-1">
                   <Icon name="FileText" size={14} />
-                  <span>{result.pageCount} pages</span>
+                  <span>{result.pageCount} {texts.estimatedPages}</span>
                 </span>
               </div>
             </div>
 
             {/* Relevance Score */}
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${getRelevanceColor(result.relevanceScore)}`}>
-              {result.relevanceScore}% match
+              {result.relevanceScore}% {texts.confidence}
             </div>
           </div>
 
@@ -114,7 +118,7 @@ const SearchResultCard = ({ result, searchQuery }) => {
                 <Icon name="Users" size={14} className="text-text-secondary" />
                 <span className="text-sm text-text-secondary">
                   {result.parties.slice(0, 2).join(', ')}
-                  {result.parties.length > 2 && ` +${result.parties.length - 2} more`}
+                  {result.parties.length > 2 && ` +${result.parties.length - 2} ${texts.results}`}
                 </span>
               </div>
             )}
@@ -142,36 +146,48 @@ const SearchResultCard = ({ result, searchQuery }) => {
                 className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm font-medium"
               >
                 <Icon name="Eye" size={16} />
-                <span>View</span>
+                <span>{texts.view}</span>
               </button>
-              
+
               <button
                 onClick={handleAnalyzeDocument}
                 className="flex items-center space-x-2 px-4 py-2 border border-border-medium text-text-primary rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium"
               >
                 <Icon name="BarChart3" size={16} />
-                <span>Analyze</span>
+                <span>{texts.analyzeDocument}</span>
               </button>
-              
+
               <button className="flex items-center space-x-2 px-4 py-2 border border-border-medium text-text-primary rounded-lg hover:bg-gray-50 transition-colors duration-200 text-sm font-medium">
                 <Icon name="Plus" size={16} />
-                <span className="hidden sm:inline">Add to Collection</span>
-                <span className="sm:hidden">Add</span>
+                <span className="hidden sm:inline">{texts.addNewClient}</span>
+                <span className="sm:hidden">{texts.addNewClient}</span>
               </button>
             </div>
 
             {/* Quick Actions */}
             <div className="flex items-center space-x-2">
-              <button className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50">
+              <button
+                className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50"
+                title={texts.downloadDocument}
+              >
                 <Icon name="Download" size={16} />
               </button>
-              <button className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50">
+              <button
+                className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50"
+                title={texts.exportDocument}
+              >
                 <Icon name="Share2" size={16} />
               </button>
-              <button className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50">
+              <button
+                className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50"
+                title={texts.saveChanges}
+              >
                 <Icon name="Bookmark" size={16} />
               </button>
-              <button className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50">
+              <button
+                className="p-2 text-text-secondary hover:text-primary transition-colors duration-200 rounded-lg hover:bg-gray-50"
+                title={texts.actions}
+              >
                 <Icon name="MoreVertical" size={16} />
               </button>
             </div>

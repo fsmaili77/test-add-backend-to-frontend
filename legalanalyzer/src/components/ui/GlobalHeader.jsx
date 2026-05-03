@@ -276,7 +276,7 @@ const GlobalHeader = () => {
                       {user?.documentQuota && user.documentQuota > 0 && (
                         <div className="mt-3">
                           <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs text-text-secondary">Document Quota</span>
+                            <span className="text-xs text-text-secondary">{texts.documentQuota || 'Document Quota'}</span>
                             <span className="text-xs font-medium text-text-primary">
                               {user.documentsProcessedThisMonth}/{user.documentQuota}
                             </span>
@@ -316,8 +316,7 @@ const GlobalHeader = () => {
                           onClick={() => setIsUserMenuOpen(false)}
                           className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
                         >
-                          <Icon name="Users" size={16} />
-                          User Management
+                          <Icon name="Users" size={16} /> {texts.userManagement || 'User Management'}
                         </Link>
                       )}
 
@@ -326,8 +325,7 @@ const GlobalHeader = () => {
                         onClick={() => setIsUserMenuOpen(false)}
                         className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-gray-50 nav-hover flex items-center gap-2 transition-colors"
                       >
-                        <Icon name="Settings" size={16} />
-                        Settings
+                        <Icon name="Settings" size={16} /> {texts.settings || 'Settings'}
                       </Link>
 
                       <div className="border-t border-border-light my-1"></div>

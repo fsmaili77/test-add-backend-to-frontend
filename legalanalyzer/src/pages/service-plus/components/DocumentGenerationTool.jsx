@@ -1,15 +1,19 @@
 // src/pages/service-plus/components/DocumentGenerationTool.jsx - Functional component
+
 import React, { useState, useEffect } from 'react';
 import Icon from 'components/AppIcon';
-import { 
-  getDocumentTemplates, 
-  generateDocument, 
+import {
+  getDocumentTemplates,
+  generateDocument,
   getGeneratedDocuments,
   downloadGeneratedDocument,
-  validateGenerationParameters 
+  validateGenerationParameters
 } from '../../../api/servicePlus';
+import { useLanguage } from 'contexts/LanguageContext';
 
 const DocumentGenerationTool = ({ documents }) => {
+  const { texts } = useLanguage();
+
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -17,7 +21,7 @@ const DocumentGenerationTool = ({ documents }) => {
   const [generationResult, setGenerationResult] = useState(null);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
-  
+
   const [documentParams, setDocumentParams] = useState({
     service_provider: '',
     client: '',
@@ -44,12 +48,11 @@ const DocumentGenerationTool = ({ documents }) => {
         setTemplates(response.templates || []);
       } catch (err) {
         console.error('Error loading templates:', err);
-        setError('Failed to load document templates');
+        setError(texts.failedToLoadTemplates);
       } finally {
         setLoadingTemplates(false);
       }
     };
-
     fetchTemplates();
   }, []);
 
@@ -63,27 +66,26 @@ const DocumentGenerationTool = ({ documents }) => {
         console.warn('Could not load recent documents:', err);
       }
     };
-
     fetchRecentDocuments();
   }, [generationResult]);
 
   const jurisdictions = [
-    { value: 'federal', label: 'Federal (US)' },
-    { value: 'california', label: 'California' },
-    { value: 'newyork', label: 'New York' },
-    { value: 'texas', label: 'Texas' },
-    { value: 'florida', label: 'Florida' },
-    { value: 'illinois', label: 'Illinois' },
-    { value: 'international', label: 'International' }
+    { value: 'federal',       label: 'Federal (US)' },
+    { value: 'california',    label: 'California' },
+    { value: 'newyork',       label: 'New York' },
+    { value: 'texas',         label: 'Texas' },
+    { value: 'florida',       label: 'Florida' },
+    { value: 'illinois',      label: 'Illinois' },
+    { value: 'international', label: texts.international },
   ];
 
   const getComplexityColor = (complexity) => {
     switch (complexity) {
-      case 'Simple': return 'bg-green-100 text-green-800';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800';
+      case 'Simple':  return 'bg-green-100 text-green-800';
+      case 'Medium':  return 'bg-yellow-100 text-yellow-800';
       case 'Complex': return 'bg-orange-100 text-orange-800';
-      case 'Expert': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Expert':  return 'bg-red-100 text-red-800';
+      default:        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -91,63 +93,47 @@ const DocumentGenerationTool = ({ documents }) => {
 
   const simulateProgress = () => {
     setProgress(10);
-    setTimeout(() => setProgress(30), 500);
+    setTimeout(() => setProgress(30),  500);
     setTimeout(() => setProgress(60), 2000);
     setTimeout(() => setProgress(90), 4000);
   };
 
   const handleGenerateDocument = async () => {
     if (!selectedTemplate) {
-      setError('Please select a document template');
+      setError(texts.selectTemplateFirst);
       return;
     }
-
     const requiredFields = selectedTemplateData?.required_fields || [];
     const validationErrors = validateGenerationParameters(selectedTemplate, documentParams, requiredFields);
-    
     if (validationErrors.length > 0) {
       setError(validationErrors.join('; '));
       return;
     }
-
     setGenerating(true);
     setError(null);
     setGenerationResult(null);
     setProgress(0);
-    
     simulateProgress();
-
     try {
-      // Add current date if not specified
       const params = {
         ...documentParams,
         effective_date: documentParams.effective_date || new Date().toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
+          year: 'numeric', month: 'long', day: 'numeric'
         })
       };
-
       const result = await generateDocument(selectedTemplate, params, {
         format: documentParams.format,
         aiProvider: documentParams.ai_provider,
         validateCompliance: true
       });
-
       setProgress(100);
-      setTimeout(() => {
-        setGenerationResult(result);
-      }, 500);
-
+      setTimeout(() => { setGenerationResult(result); }, 500);
     } catch (err) {
       console.error('Generation error:', err);
-      setError(err.message || 'Document generation failed. Please try again.');
+      setError(err.message || texts.generationFailed);
       setProgress(0);
     } finally {
-      setTimeout(() => {
-        setGenerating(false);
-        setProgress(0);
-      }, 1000);
+      setTimeout(() => { setGenerating(false); setProgress(0); }, 1000);
     }
   };
 
@@ -156,7 +142,7 @@ const DocumentGenerationTool = ({ documents }) => {
       await downloadGeneratedDocument(generationId);
     } catch (err) {
       console.error('Download error:', err);
-      setError('Failed to download document');
+      setError(texts.failedToDownload);
     }
   };
 
@@ -164,12 +150,8 @@ const DocumentGenerationTool = ({ documents }) => {
     setGenerationResult(null);
     setError(null);
     setProgress(0);
-    // Reset form to template defaults
     if (selectedTemplateData?.sample_data) {
-      setDocumentParams(prev => ({
-        ...prev,
-        ...selectedTemplateData.sample_data
-      }));
+      setDocumentParams(prev => ({ ...prev, ...selectedTemplateData.sample_data }));
     }
   };
 
@@ -192,7 +174,7 @@ const DocumentGenerationTool = ({ documents }) => {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-text-secondary">Loading document templates...</p>
+          <p className="text-text-secondary">{texts.loadingTemplates}</p>
         </div>
       </div>
     );
@@ -200,27 +182,28 @@ const DocumentGenerationTool = ({ documents }) => {
 
   return (
     <div className="space-y-6">
-      {/* Success Banner */}
+
+      {/* Active Features Banner */}
       <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
         <div className="flex items-center space-x-3 mb-3">
           <Icon name="CheckCircle" size={24} className="text-green-600" />
-          <h3 className="text-lg font-semibold text-green-800">Document Generation - Active</h3>
+          <h3 className="text-lg font-semibold text-green-800">
+            {texts.documentGenerationActive}
+          </h3>
         </div>
-        <p className="text-green-700 mb-4">
-          AI-powered legal document generation is now available with these features:
-        </p>
+        <p className="text-green-700 mb-4">{texts.documentGenerationDesc}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <ul className="list-disc list-inside text-green-700 space-y-1">
-            <li>Professional legal document templates</li>
-            <li>AI enhancement with Gemini integration</li>
-            <li>Legal compliance validation</li>
-            <li>Multiple export formats (DOCX, PDF)</li>
+            <li>{texts.featureProfessionalTemplates}</li>
+            <li>{texts.featureAiEnhancement}</li>
+            <li>{texts.featureComplianceValidation}</li>
+            <li>{texts.featureMultipleFormats}</li>
           </ul>
           <ul className="list-disc list-inside text-green-700 space-y-1">
-            <li>Jurisdiction-specific customization</li>
-            <li>Template parameter validation</li>
-            <li>Generation history tracking</li>
-            <li>Professional formatting</li>
+            <li>{texts.featureJurisdiction}</li>
+            <li>{texts.featureParameterValidation}</li>
+            <li>{texts.featureGenerationHistory}</li>
+            <li>{texts.featureProfessionalFormatting}</li>
           </ul>
         </div>
       </div>
@@ -228,7 +211,7 @@ const DocumentGenerationTool = ({ documents }) => {
       {/* Template Selection */}
       <div>
         <h3 className="text-lg font-semibold text-text-primary mb-4">
-          Available Document Templates ({templates.length})
+          {texts.availableTemplates} ({templates.length})
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.map((template) => (
@@ -258,11 +241,9 @@ const DocumentGenerationTool = ({ documents }) => {
               <p className="text-sm text-text-secondary mb-3 line-clamp-2">{template.description}</p>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-text-secondary">
-                  {template.required_fields?.length || 0} required fields
+                  {template.required_fields?.length || 0} {texts.requiredFields}
                 </span>
-                <span className="text-primary font-medium">
-                  {template.jurisdiction}
-                </span>
+                <span className="text-primary font-medium">{template.jurisdiction}</span>
               </div>
             </div>
           ))}
@@ -273,9 +254,9 @@ const DocumentGenerationTool = ({ documents }) => {
       {selectedTemplate && (
         <div className="bg-surface border border-border-light rounded-lg p-6">
           <h3 className="text-lg font-semibold text-text-primary mb-4">
-            Generate {selectedTemplateData?.name}
+            {texts.generate} {selectedTemplateData?.name}
           </h3>
-          
+
           {selectedTemplateData && (
             <div className="mb-6 p-4 bg-blue-50 rounded-lg">
               <div className="flex items-center space-x-3">
@@ -288,17 +269,16 @@ const DocumentGenerationTool = ({ documents }) => {
             </div>
           )}
 
-          {/* Template-specific fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {selectedTemplateData?.required_fields?.includes('service_provider') && (
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Service Provider *
+                  {texts.serviceProvider} *
                 </label>
                 <textarea
                   value={documentParams.service_provider || ''}
                   onChange={(e) => setDocumentParams(prev => ({ ...prev, service_provider: e.target.value }))}
-                  placeholder="Enter service provider details..."
+                  placeholder={texts.serviceProviderPlaceholder}
                   rows={3}
                   className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
@@ -308,12 +288,12 @@ const DocumentGenerationTool = ({ documents }) => {
             {selectedTemplateData?.required_fields?.includes('client') && (
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Client *
+                  {texts.client} *
                 </label>
                 <textarea
                   value={documentParams.client || ''}
                   onChange={(e) => setDocumentParams(prev => ({ ...prev, client: e.target.value }))}
-                  placeholder="Enter client details..."
+                  placeholder={texts.clientDetailsPlaceholder}
                   rows={3}
                   className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
@@ -323,12 +303,12 @@ const DocumentGenerationTool = ({ documents }) => {
             {selectedTemplateData?.required_fields?.includes('services_description') && (
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Services Description *
+                  {texts.servicesDescription} *
                 </label>
                 <textarea
                   value={documentParams.services_description || ''}
                   onChange={(e) => setDocumentParams(prev => ({ ...prev, services_description: e.target.value }))}
-                  placeholder="Describe the services to be provided..."
+                  placeholder={texts.servicesDescriptionPlaceholder}
                   rows={4}
                   className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
@@ -338,12 +318,12 @@ const DocumentGenerationTool = ({ documents }) => {
             {selectedTemplateData?.required_fields?.includes('payment_terms') && (
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Payment Terms *
+                  {texts.paymentTerms} *
                 </label>
                 <textarea
                   value={documentParams.payment_terms || ''}
                   onChange={(e) => setDocumentParams(prev => ({ ...prev, payment_terms: e.target.value }))}
-                  placeholder="Enter payment terms and amounts..."
+                  placeholder={texts.paymentTermsPlaceholder}
                   rows={3}
                   className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
@@ -353,54 +333,54 @@ const DocumentGenerationTool = ({ documents }) => {
             {selectedTemplateData?.required_fields?.includes('duration') && (
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Duration *
+                  {texts.duration} *
                 </label>
                 <input
                   type="text"
                   value={documentParams.duration || ''}
                   onChange={(e) => setDocumentParams(prev => ({ ...prev, duration: e.target.value }))}
-                  placeholder="e.g., six (6) months"
+                  placeholder={texts.durationPlaceholder}
                   className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             )}
 
-            {/* Configuration Options */}
+            {/* Jurisdiction */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                Jurisdiction
+                {texts.jurisdiction}
               </label>
               <select
                 value={documentParams.jurisdiction}
                 onChange={(e) => setDocumentParams(prev => ({ ...prev, jurisdiction: e.target.value }))}
                 className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               >
-                {jurisdictions.map((jurisdiction) => (
-                  <option key={jurisdiction.value} value={jurisdiction.value}>
-                    {jurisdiction.label}
-                  </option>
+                {jurisdictions.map((j) => (
+                  <option key={j.value} value={j.value}>{j.label}</option>
                 ))}
               </select>
             </div>
 
+            {/* Export Format */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                Export Format
+                {texts.exportFormat}
               </label>
               <select
                 value={documentParams.format}
                 onChange={(e) => setDocumentParams(prev => ({ ...prev, format: e.target.value }))}
                 className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               >
-                <option value="docx">DOCX (Word Document)</option>
-                <option value="pdf">PDF Document</option>
-                <option value="txt">Text File</option>
+                <option value="docx">{texts.formatDocx}</option>
+                <option value="pdf">{texts.formatPdf}</option>
+                <option value="txt">{texts.formatTxt}</option>
               </select>
             </div>
 
+            {/* AI Provider */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                AI Provider
+                {texts.aiProvider}
               </label>
               <select
                 value={documentParams.ai_provider}
@@ -412,27 +392,28 @@ const DocumentGenerationTool = ({ documents }) => {
               </select>
             </div>
 
+            {/* Effective Date */}
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                Effective Date
+                {texts.effectiveDate}
               </label>
               <input
                 type="date"
-                value={documentParams.effective_date ? new Date(documentParams.effective_date).toISOString().split('T')[0] : ''}
-                onChange={(e) => setDocumentParams(prev => ({ 
-                  ...prev, 
-                  effective_date: e.target.value ? new Date(e.target.value).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  }) : ''
+                value={documentParams.effective_date
+                  ? new Date(documentParams.effective_date).toISOString().split('T')[0]
+                  : ''}
+                onChange={(e) => setDocumentParams(prev => ({
+                  ...prev,
+                  effective_date: e.target.value
+                    ? new Date(e.target.value).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                    : ''
                 }))}
                 className="w-full border border-border-medium rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
           </div>
 
-          {/* Error Display */}
+          {/* Error */}
           {error && (
             <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-center space-x-2">
@@ -442,7 +423,7 @@ const DocumentGenerationTool = ({ documents }) => {
             </div>
           )}
 
-          {/* Generate Button */}
+          {/* Action Buttons */}
           <div className="mt-6 flex justify-center space-x-4">
             <button
               onClick={handleGenerateDocument}
@@ -452,23 +433,22 @@ const DocumentGenerationTool = ({ documents }) => {
               {generating ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Generating Document...</span>
+                  <span>{texts.generatingDocument}</span>
                 </>
               ) : (
                 <>
                   <Icon name="FileText" size={20} />
-                  <span>Generate Document</span>
+                  <span>{texts.generateDocument}</span>
                 </>
               )}
             </button>
-
             {generationResult && (
               <button
                 onClick={resetGeneration}
                 className="flex items-center space-x-2 px-6 py-3 border border-border-medium text-text-primary rounded-lg hover:bg-gray-50 transition-colors duration-200"
               >
                 <Icon name="RotateCcw" size={16} />
-                <span>New Generation</span>
+                <span>{texts.newGeneration}</span>
               </button>
             )}
           </div>
@@ -477,7 +457,7 @@ const DocumentGenerationTool = ({ documents }) => {
           {generating && (
             <div className="mt-6 bg-surface border border-border-light rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-text-primary">Generating document...</span>
+                <span className="text-sm font-medium text-text-primary">{texts.generatingDocument}...</span>
                 <span className="text-sm text-text-secondary">{progress}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -487,10 +467,10 @@ const DocumentGenerationTool = ({ documents }) => {
                 />
               </div>
               <div className="mt-2 text-xs text-text-secondary">
-                {progress < 30 && "Processing template and parameters..."}
-                {progress >= 30 && progress < 60 && "Generating content with AI..."}
-                {progress >= 60 && progress < 90 && "Validating compliance..."}
-                {progress >= 90 && "Finalizing document..."}
+                {progress < 30  && texts.progressProcessingTemplate}
+                {progress >= 30 && progress < 60 && texts.progressGeneratingContent}
+                {progress >= 60 && progress < 90 && texts.progressValidatingCompliance}
+                {progress >= 90 && texts.progressFinalizing}
               </div>
             </div>
           )}
@@ -503,58 +483,55 @@ const DocumentGenerationTool = ({ documents }) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-text-primary flex items-center space-x-2">
               <Icon name="CheckCircle" size={24} className="text-green-600" />
-              <span>Document Generated Successfully</span>
+              <span>{texts.documentGeneratedSuccessfully}</span>
             </h3>
             <button
               onClick={() => handleDownloadDocument(generationResult.generation_id)}
               className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
             >
               <Icon name="Download" size={16} />
-              <span>Download</span>
+              <span>{texts.downloadDocument}</span>
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <h4 className="font-medium text-text-primary mb-2">Document Details</h4>
+              <h4 className="font-medium text-text-primary mb-2">{texts.documentDetails}</h4>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Template:</span>
-                  <span className="text-text-primary">{generationResult.template_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Format:</span>
-                  <span className="text-text-primary uppercase">{generationResult.format_type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">AI Provider:</span>
-                  <span className="text-text-primary">{generationResult.ai_provider}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Generation Time:</span>
-                  <span className="text-text-primary">{generationResult.generation_time_ms}ms</span>
-                </div>
+                {[
+                  { label: texts.templateLabel,      value: generationResult.template_name },
+                  { label: texts.exportFormat,        value: generationResult.format_type?.toUpperCase() },
+                  { label: texts.aiProvider,          value: generationResult.ai_provider },
+                  { label: texts.generationTime,      value: `${generationResult.generation_time_ms}ms` },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-text-secondary">{label}:</span>
+                    <span className="text-text-primary">{value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
             {generationResult.compliance_validation && (
               <div>
-                <h4 className="font-medium text-text-primary mb-2">Compliance Status</h4>
+                <h4 className="font-medium text-text-primary mb-2">{texts.complianceStatus}</h4>
                 <div className={`p-3 rounded-lg ${
                   generationResult.compliance_validation.status === 'compliant'
                     ? 'bg-green-50 border border-green-200'
                     : 'bg-yellow-50 border border-yellow-200'
                 }`}>
                   <div className="flex items-center space-x-2 mb-2">
-                    <Icon 
-                      name={generationResult.compliance_validation.status === 'compliant' ? 'CheckCircle' : 'AlertTriangle'} 
-                      size={16} 
-                      className={generationResult.compliance_validation.status === 'compliant' ? 'text-green-600' : 'text-yellow-600'} 
+                    <Icon
+                      name={generationResult.compliance_validation.status === 'compliant' ? 'CheckCircle' : 'AlertTriangle'}
+                      size={16}
+                      className={generationResult.compliance_validation.status === 'compliant' ? 'text-green-600' : 'text-yellow-600'}
                     />
                     <span className={`text-sm font-medium ${
                       generationResult.compliance_validation.status === 'compliant' ? 'text-green-800' : 'text-yellow-800'
                     }`}>
-                      {generationResult.compliance_validation.status === 'compliant' ? 'Compliant' : 'Review Required'}
+                      {generationResult.compliance_validation.status === 'compliant'
+                        ? texts.compliant
+                        : texts.reviewRequired}
                     </span>
                   </div>
                   {generationResult.compliance_validation.issues?.length > 0 && (
@@ -570,7 +547,7 @@ const DocumentGenerationTool = ({ documents }) => {
           </div>
 
           <div className="border-t pt-4">
-            <h4 className="font-medium text-text-primary mb-2">Generated Content Preview</h4>
+            <h4 className="font-medium text-text-primary mb-2">{texts.generatedContentPreview}</h4>
             <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
               <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
                 {generationResult.generated_content?.substring(0, 1000)}
@@ -581,13 +558,18 @@ const DocumentGenerationTool = ({ documents }) => {
         </div>
       )}
 
-      {/* Recent Documents */}
+      {/* Recent Generated Documents */}
       {recentDocuments.length > 0 && (
         <div className="bg-surface border border-border-light rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-text-primary mb-4">Recent Generated Documents</h3>
+          <h3 className="text-lg font-semibold text-text-primary mb-4">
+            {texts.recentGeneratedDocuments}
+          </h3>
           <div className="space-y-3">
             {recentDocuments.map((doc) => (
-              <div key={doc.generation_id} className="flex items-center justify-between p-3 border border-border-medium rounded-lg">
+              <div
+                key={doc.generation_id}
+                className="flex items-center justify-between p-3 border border-border-medium rounded-lg"
+              >
                 <div className="flex items-center space-x-3">
                   <Icon name="FileText" size={16} className="text-blue-600" />
                   <div>
@@ -602,7 +584,7 @@ const DocumentGenerationTool = ({ documents }) => {
                   className="flex items-center space-x-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded transition-colors"
                 >
                   <Icon name="Download" size={14} />
-                  <span>Download</span>
+                  <span>{texts.downloadDocument}</span>
                 </button>
               </div>
             ))}

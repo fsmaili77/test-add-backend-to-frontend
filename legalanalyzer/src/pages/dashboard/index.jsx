@@ -314,7 +314,7 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                   </div>
                 )}
                 <p className="text-text-secondary">
-                  {texts.welcomeBack || 'Welcome back'} - Powered by Python Flask & Gemini AI
+                  {texts.welcomeBack || 'Welcome back'} - {texts.poweredBy || 'Powered by Gemini AI'} 
                 </p>
               </div>
               
@@ -418,12 +418,12 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                       <div className="text-center py-12">
                         <Icon name="FileX" size={48} className="text-text-secondary mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-text-primary mb-2">
-                          {activeFilter === 'All' ? 'No Documents Found' : `No ${activeFilter} Documents`}
+                          {activeFilter === 'All' ? texts.noDocumentsFound || 'No Documents Found' : texts.noFilteredDocuments || `No ${activeFilter} Documents`}
                         </h3>
                         <p className="text-text-secondary mb-4">
                           {activeFilter === 'All' 
-                            ? 'Get started by uploading your first legal document'
-                            : `There are no documents with ${activeFilter.toLowerCase()} status`
+                            ? texts.getStartedUpload || 'Get started by uploading your first legal document'
+                            : texts.noStatusDocuments || `There are no documents with ${activeFilter.toLowerCase()} status`
                           }
                         </p>
                         {activeFilter === 'All' && (
@@ -432,7 +432,7 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                             className="inline-flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
                           >
                             <Icon name="Upload" size={16} className="mr-2" />
-                            Upload Documents
+                            {texts.uploadDocuments || 'Upload Documents'}
                           </Link>
                         )}
                       </div>
@@ -468,7 +468,7 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                               </div>
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                              LANGUAGE
+                              {texts.languageColumn || 'Language'}
                             </th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">
                               {texts.actions || 'Actions'}
@@ -686,9 +686,9 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                         <div className="w-8 h-8 bg-success/10 rounded-lg flex items-center justify-center mr-3">
                           <Icon name="HardDrive" size={20} className="text-success"/>
                         </div>
-                        <p className="text-sm font-medium text-text-secondary">Storage Used</p>
+                        <p className="text-sm font-medium text-text-secondary"> {texts.storageUsed || 'Storage Used'}</p>
                       </div>
-                      <p className="text-sm text-text-secondary">{metrics.storageUsed}/{metrics.storageLimit}</p>
+                      <p className="text-sm text-text-secondary"><b>{metrics.storageUsed}/{metrics.storageLimit}</b></p>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
@@ -703,24 +703,24 @@ const handleAnalyze = async (id, useAdvancedAnalysis = true) => {
                 <div className="bg-surface rounded-lg border border-border-light p-6">
                   <h3 className="text-lg font-semibold text-text-primary mb-4 flex items-center space-x-2">
                     <Icon name="Server" size={20} />
-                    <span>System Status</span>
+                    <span>{texts.systemStatus || 'System Status'}</span>
                   </h3>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-text-secondary">Python Backend</span>
+                      <span className="text-sm text-text-secondary">{texts.pythonBackend || 'Python Backend'} </span>
                       <span className={`text-sm font-medium ${
                         backendHealth?.overall_status === 'healthy' ? 'text-success' : 'text-error'
                       }`}>
-                        {backendHealth?.overall_status === 'healthy' ? 'Online' : 'Offline'}
+                        {backendHealth?.overall_status === 'healthy' ? 'Online' : 'Offline'} 
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-text-secondary">Gemini AI</span>
-                      <span className="text-sm font-medium text-success">Available</span>
+                      <span className="text-sm font-medium text-success">{texts.available || 'Available'} </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-text-secondary">Database</span>
-                      <span className="text-sm font-medium text-success">Connected</span>
+                      <span className="text-sm text-text-secondary"> {texts.database || 'Database'}</span>
+                      <span className="text-sm font-medium text-success">{texts.connected || 'Connected'}</span>
                     </div>
                   </div>
                 </div>

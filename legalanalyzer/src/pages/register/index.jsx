@@ -1,20 +1,19 @@
 // src/pages/register/index.jsx
+// src/pages/register/index.jsx
+
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-import { register } from 'services/authService'; // FIX: named import, no default export exists
+import { register } from 'services/authService';
+import { useLanguage } from 'contexts/LanguageContext';
 
 const Register = () => {
+  const { texts } = useLanguage();
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    firstName: '',
-    lastName: '',
-    organization: '',
-    position: '',
+    username: '', email: '', password: '', confirmPassword: '',
+    firstName: '', lastName: '', organization: '', position: '',
     agreeToTerms: false
   });
   const [errors, setErrors] = useState({});
@@ -25,77 +24,50 @@ const Register = () => {
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
+    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const validateForm = () => {
     const newErrors = {};
-
     if (!formData.username) {
-      newErrors.username = 'Username is required';
+      newErrors.username = texts.usernameRequired;
     } else if (formData.username.length < 3) {
-      newErrors.username = 'Username must be at least 3 characters';
+      newErrors.username = texts.usernameMinLength;
     } else if (!/^[a-zA-Z0-9_]+$/.test(formData.username)) {
-      newErrors.username = 'Username can only contain letters, numbers, and underscores';
+      newErrors.username = texts.usernameInvalid;
     }
-
     if (!formData.email) {
-      newErrors.email = 'Email is required';
+      newErrors.email = texts.emailRequired;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
+      newErrors.email = texts.emailInvalid;
     }
-
-    if (!formData.firstName) {
-      newErrors.firstName = 'First name is required';
-    }
-
-    if (!formData.lastName) {
-      newErrors.lastName = 'Last name is required';
-    }
-
+    if (!formData.firstName) newErrors.firstName = texts.firstNameRequired;
+    if (!formData.lastName)  newErrors.lastName  = texts.lastNameRequired;
     if (!formData.password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = texts.passwordRequired;
     } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
+      newErrors.password = texts.passwordMinLength8;
     } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(formData.password)) {
-      newErrors.password = 'Password must contain uppercase, lowercase, number, and special character';
+      newErrors.password = texts.passwordComplexity;
     }
-
     if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
+      newErrors.confirmPassword = texts.confirmPasswordRequired;
     } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
+      newErrors.confirmPassword = texts.passwordsMismatch;
     }
-
-    if (!formData.agreeToTerms) {
-      newErrors.agreeToTerms = 'You must agree to the terms and conditions';
-    }
-
+    if (!formData.agreeToTerms) newErrors.agreeToTerms = texts.mustAgreeTerms;
     return newErrors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
     const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
+    if (Object.keys(validationErrors).length > 0) { setErrors(validationErrors); return; }
     setIsLoading(true);
     setErrors({});
-
     try {
-      await register({ // FIX: direct call
+      await register({
         username: formData.username,
         email: formData.email,
         password: formData.password,
@@ -104,8 +76,6 @@ const Register = () => {
         organization: formData.organization || undefined,
         position: formData.position || undefined
       });
-
-      // register() throws on failure, so if we reach here it succeeded
       setRegistrationSuccess(true);
       setTimeout(() => {
         navigate('/login', {
@@ -114,9 +84,7 @@ const Register = () => {
       }, 3000);
     } catch (error) {
       console.error('Registration error:', error);
-      setErrors({
-        general: error.message || 'An unexpected error occurred. Please try again.'
-      });
+      setErrors({ general: error.message || texts.unexpectedError });
     } finally {
       setIsLoading(false);
     }
@@ -125,22 +93,21 @@ const Register = () => {
   const getPasswordStrength = () => {
     const password = formData.password;
     if (!password) return { strength: 0, label: '', color: '' };
-
     let strength = 0;
-    if (password.length >= 8) strength++;
+    if (password.length >= 8)  strength++;
     if (password.length >= 12) strength++;
     if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
-    if (/\d/.test(password)) strength++;
-    if (/[@$!%*?&]/.test(password)) strength++;
-
-    if (strength <= 2) return { strength: 25, label: 'Weak', color: 'bg-red-500' };
-    if (strength <= 3) return { strength: 50, label: 'Fair', color: 'bg-amber-500' };
-    if (strength <= 4) return { strength: 75, label: 'Good', color: 'bg-blue-500' };
-    return { strength: 100, label: 'Strong', color: 'bg-green-500' };
+    if (/\d/.test(password))          strength++;
+    if (/[@$!%*?&]/.test(password))   strength++;
+    if (strength <= 2) return { strength: 25, label: 'Weak',   color: 'bg-red-500' };
+    if (strength <= 3) return { strength: 50, label: 'Fair',   color: 'bg-amber-500' };
+    if (strength <= 4) return { strength: 75, label: 'Good',   color: 'bg-blue-500' };
+    return               { strength: 100, label: 'Strong', color: 'bg-green-500' };
   };
 
   const passwordStrength = getPasswordStrength();
 
+  // Success screen
   if (registrationSuccess) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
@@ -149,13 +116,13 @@ const Register = () => {
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Icon name="CheckCircle" size={32} className="text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold text-text-primary mb-2">Registration Successful!</h2>
+            <h2 className="text-2xl font-bold text-text-primary mb-2">{texts.registrationSuccessful}</h2>
             <p className="text-text-secondary mb-4">
               Your account has been created successfully. You will be redirected to the login page shortly.
             </p>
             <div className="flex items-center justify-center space-x-2 text-sm text-text-secondary">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-              <span>Redirecting to login...</span>
+              <span>{texts.redirectingToLogin}</span>
             </div>
           </div>
         </div>
@@ -167,19 +134,20 @@ const Register = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-2xl">
         <div className="bg-surface rounded-2xl shadow-elevation-3 p-8">
-          {/* Logo and Header */}
+
+          {/* Logo & Header */}
           <div className="text-center mb-8">
             <div className="flex items-center justify-center space-x-3 mb-6">
               <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
                 <Icon name="Scale" size={24} color="white" />
               </div>
-              <h1 className="text-2xl font-bold text-primary">LegalAnalyzer</h1>
+              <h1 className="text-2xl font-bold text-primary">{texts.appName}</h1>
             </div>
-            <h2 className="text-xl font-semibold text-text-primary mb-2">Create Your Account</h2>
-            <p className="text-text-secondary">Join our legal document analysis platform</p>
+            <h2 className="text-xl font-semibold text-text-primary mb-2">{texts.createYourAccount}</h2>
+            <p className="text-text-secondary">{texts.joinPlatform}</p>
           </div>
 
-          {/* Registration Form */}
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {errors.general && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -190,137 +158,100 @@ const Register = () => {
               </div>
             )}
 
-            {/* Personal Information */}
+            {/* First Name + Last Name */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-text-primary mb-2">
-                  First Name *
+                  {texts.firstName} *
                 </label>
                 <input
-                  type="text"
-                  id="firstName"
-                  name="firstName"
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                    errors.firstName ? 'border-error' : 'border-border-light'
-                  }`}
-                  placeholder="John"
+                  type="text" id="firstName" name="firstName"
+                  value={formData.firstName} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterFirstName}
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.firstName ? 'border-error' : 'border-border-light'}`}
                 />
                 {errors.firstName && (
                   <p className="mt-2 text-sm text-error flex items-center">
-                    <Icon name="AlertCircle" size={16} className="mr-1" />
-                    {errors.firstName}
+                    <Icon name="AlertCircle" size={16} className="mr-1" />{errors.firstName}
                   </p>
                 )}
               </div>
-
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-text-primary mb-2">
-                  Last Name *
+                  {texts.lastName} *
                 </label>
                 <input
-                  type="text"
-                  id="lastName"
-                  name="lastName"
-                  value={formData.lastName}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                    errors.lastName ? 'border-error' : 'border-border-light'
-                  }`}
-                  placeholder="Doe"
+                  type="text" id="lastName" name="lastName"
+                  value={formData.lastName} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterLastName}
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.lastName ? 'border-error' : 'border-border-light'}`}
                 />
                 {errors.lastName && (
                   <p className="mt-2 text-sm text-error flex items-center">
-                    <Icon name="AlertCircle" size={16} className="mr-1" />
-                    {errors.lastName}
+                    <Icon name="AlertCircle" size={16} className="mr-1" />{errors.lastName}
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Account Information */}
+            {/* Username */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-text-primary mb-2">
-                Username *
+                {texts.username} *
               </label>
               <input
-                type="text"
-                id="username"
-                name="username"
-                value={formData.username}
-                onChange={handleInputChange}
-                disabled={isLoading}
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                  errors.username ? 'border-error' : 'border-border-light'
-                }`}
-                placeholder="johndoe"
+                type="text" id="username" name="username"
+                value={formData.username} onChange={handleInputChange}
+                disabled={isLoading} placeholder={texts.enterUsername}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.username ? 'border-error' : 'border-border-light'}`}
               />
               {errors.username && (
                 <p className="mt-2 text-sm text-error flex items-center">
-                  <Icon name="AlertCircle" size={16} className="mr-1" />
-                  {errors.username}
+                  <Icon name="AlertCircle" size={16} className="mr-1" />{errors.username}
                 </p>
               )}
             </div>
 
+            {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
-                Email Address *
+                {texts.emailAddress} *
               </label>
               <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                disabled={isLoading}
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                  errors.email ? 'border-error' : 'border-border-light'
-                }`}
-                placeholder="john.doe@lawfirm.com"
+                type="email" id="email" name="email"
+                value={formData.email} onChange={handleInputChange}
+                disabled={isLoading} placeholder={texts.enterYourEmail}
+                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.email ? 'border-error' : 'border-border-light'}`}
               />
               {errors.email && (
                 <p className="mt-2 text-sm text-error flex items-center">
-                  <Icon name="AlertCircle" size={16} className="mr-1" />
-                  {errors.email}
+                  <Icon name="AlertCircle" size={16} className="mr-1" />{errors.email}
                 </p>
               )}
             </div>
 
-            {/* Professional Information (Optional) */}
+            {/* Organization + Position */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="organization" className="block text-sm font-medium text-text-primary mb-2">
-                  Organization
+                  {texts.organization}
                 </label>
                 <input
-                  type="text"
-                  id="organization"
-                  name="organization"
-                  value={formData.organization}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
+                  type="text" id="organization" name="organization"
+                  value={formData.organization} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterOrganization}
                   className="w-full px-4 py-3 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50"
-                  placeholder="Law Firm Name"
                 />
               </div>
-
               <div>
                 <label htmlFor="position" className="block text-sm font-medium text-text-primary mb-2">
-                  Position
+                  {texts.position}
                 </label>
                 <input
-                  type="text"
-                  id="position"
-                  name="position"
-                  value={formData.position}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
+                  type="text" id="position" name="position"
+                  value={formData.position} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterPosition}
                   className="w-full px-4 py-3 border border-border-light rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50"
-                  placeholder="Attorney, Paralegal, etc."
                 />
               </div>
             </div>
@@ -328,38 +259,33 @@ const Register = () => {
             {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
-                Password *
+                {texts.password} *
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                    errors.password ? 'border-error' : 'border-border-light'
-                  }`}
-                  placeholder="Enter a strong password"
+                  id="password" name="password"
+                  value={formData.password} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterPassword}
+                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.password ? 'border-error' : 'border-border-light'}`}
                 />
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  type="button" onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary"
                   disabled={isLoading}
                 >
                   <Icon name={showPassword ? 'EyeOff' : 'Eye'} size={20} />
                 </button>
               </div>
+
+              {/* Password strength bar */}
               {formData.password && (
                 <div className="mt-2">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-text-secondary">Password strength:</span>
+                    <span className="text-xs text-text-secondary">{texts.passwordStrength}</span>
                     <span className={`text-xs font-medium ${
                       passwordStrength.strength >= 75 ? 'text-green-600' :
-                      passwordStrength.strength >= 50 ? 'text-blue-600' :
-                      'text-red-600'
+                      passwordStrength.strength >= 50 ? 'text-blue-600' : 'text-red-600'
                     }`}>
                       {passwordStrength.label}
                     </span>
@@ -374,36 +300,27 @@ const Register = () => {
               )}
               {errors.password && (
                 <p className="mt-2 text-sm text-error flex items-center">
-                  <Icon name="AlertCircle" size={16} className="mr-1" />
-                  {errors.password}
+                  <Icon name="AlertCircle" size={16} className="mr-1" />{errors.password}
                 </p>
               )}
-              <p className="mt-2 text-xs text-text-secondary">
-                Must be at least 8 characters with uppercase, lowercase, number, and special character
-              </p>
+              <p className="mt-2 text-xs text-text-secondary">{texts.passwordComplexity}</p>
             </div>
 
             {/* Confirm Password */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-primary mb-2">
-                Confirm Password *
+                {texts.confirmPassword} *
               </label>
               <div className="relative">
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  disabled={isLoading}
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${
-                    errors.confirmPassword ? 'border-error' : 'border-border-light'
-                  }`}
-                  placeholder="Confirm your password"
+                  id="confirmPassword" name="confirmPassword"
+                  value={formData.confirmPassword} onChange={handleInputChange}
+                  disabled={isLoading} placeholder={texts.enterConfirmPassword}
+                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50 ${errors.confirmPassword ? 'border-error' : 'border-border-light'}`}
                 />
                 <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary"
                   disabled={isLoading}
                 >
@@ -412,59 +329,52 @@ const Register = () => {
               </div>
               {errors.confirmPassword && (
                 <p className="mt-2 text-sm text-error flex items-center">
-                  <Icon name="AlertCircle" size={16} className="mr-1" />
-                  {errors.confirmPassword}
+                  <Icon name="AlertCircle" size={16} className="mr-1" />{errors.confirmPassword}
                 </p>
               )}
             </div>
 
-            {/* Terms and Conditions */}
+            {/* Terms & Conditions */}
             <div>
               <label className="flex items-start">
                 <input
-                  type="checkbox"
-                  name="agreeToTerms"
-                  checked={formData.agreeToTerms}
-                  onChange={handleInputChange}
+                  type="checkbox" name="agreeToTerms"
+                  checked={formData.agreeToTerms} onChange={handleInputChange}
                   disabled={isLoading}
-                  className={`h-4 w-4 text-primary focus:ring-accent border-border-medium rounded mt-1 disabled:opacity-50 ${
-                    errors.agreeToTerms ? 'border-error' : ''
-                  }`}
+                  className={`h-4 w-4 text-primary focus:ring-accent border-border-medium rounded mt-1 disabled:opacity-50 ${errors.agreeToTerms ? 'border-error' : ''}`}
                 />
                 <span className="ml-2 text-sm text-text-secondary">
-                  I agree to the{' '}
+                  {texts.agreeToTerms}{' '}
                   <a href="/terms" className="text-primary hover:text-blue-700 font-medium">
-                    Terms and Conditions
+                    {texts.termsAndConditions}
                   </a>{' '}
-                  and{' '}
+                  {texts.and}{' '}
                   <a href="/privacy" className="text-primary hover:text-blue-700 font-medium">
-                    Privacy Policy
+                    {texts.privacyPolicy}
                   </a>
                 </span>
               </label>
               {errors.agreeToTerms && (
                 <p className="mt-2 text-sm text-error flex items-center">
-                  <Icon name="AlertCircle" size={16} className="mr-1" />
-                  {errors.agreeToTerms}
+                  <Icon name="AlertCircle" size={16} className="mr-1" />{errors.agreeToTerms}
                 </p>
               )}
             </div>
 
-            {/* Submit Button */}
+            {/* Submit */}
             <button
-              type="submit"
-              disabled={isLoading}
+              type="submit" disabled={isLoading}
               className="w-full bg-primary text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center"
             >
               {isLoading ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Creating Account...
+                  {texts.signingIn}
                 </>
               ) : (
                 <>
                   <Icon name="UserPlus" size={20} className="mr-2" />
-                  Create Account
+                  {texts.createAccount}
                 </>
               )}
             </button>
@@ -473,9 +383,9 @@ const Register = () => {
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-text-secondary">
-              Already have an account?{' '}
+              {texts.alreadyHaveAccount}{' '}
               <Link to="/login" className="text-primary hover:text-blue-700 font-medium">
-                Sign In
+                {texts.signIn}
               </Link>
             </p>
           </div>
@@ -483,7 +393,7 @@ const Register = () => {
 
         {/* Account Benefits */}
         <div className="mt-6 bg-white/50 rounded-lg p-4">
-          <h3 className="text-sm font-medium text-text-primary mb-3">Your account includes:</h3>
+          <h3 className="text-sm font-medium text-text-primary mb-3">{texts.accountIncludes}</h3>
           <div className="grid grid-cols-2 gap-3 text-xs text-text-secondary">
             <div className="flex items-center">
               <Icon name="CheckCircle" size={14} className="text-green-600 mr-2" />
@@ -491,15 +401,15 @@ const Register = () => {
             </div>
             <div className="flex items-center">
               <Icon name="CheckCircle" size={14} className="text-green-600 mr-2" />
-              <span>AI-powered analysis</span>
+              <span>{texts.aiPoweredAnalysis}</span>
             </div>
             <div className="flex items-center">
               <Icon name="CheckCircle" size={14} className="text-green-600 mr-2" />
-              <span>Document comparison</span>
+              <span>{texts.documentComparison}</span>
             </div>
             <div className="flex items-center">
               <Icon name="CheckCircle" size={14} className="text-green-600 mr-2" />
-              <span>Secure cloud storage</span>
+              <span>{texts.secureCloudStorage}</span>
             </div>
           </div>
         </div>

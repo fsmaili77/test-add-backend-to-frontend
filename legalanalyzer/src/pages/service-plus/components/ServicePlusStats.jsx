@@ -1,9 +1,12 @@
 // src/pages/service-plus/components/ServicePlusStats.jsx
+
 import React from 'react';
 import Icon from 'components/AppIcon';
 import { useServicePlusStats } from '../hooks/useServicePlusStats';
+import { useLanguage } from 'contexts/LanguageContext';
 
 const ServicePlusStats = ({ className = '', refreshInterval = 30000 }) => {
+  const { texts } = useLanguage();
   const { stats, health, loading, error, lastUpdated, fetchStats } = useServicePlusStats(refreshInterval);
 
   const handleRefresh = () => {
@@ -20,13 +23,12 @@ const ServicePlusStats = ({ className = '', refreshInterval = 30000 }) => {
   };
 
   const formatLastUpdated = (date) => {
-    if (!date) return 'Never';
+    if (!date) return texts.never;
     const now = new Date();
     const diffMs = now - date;
     const diffSecs = Math.floor(diffMs / 1000);
-    
-    if (diffSecs < 60) return `${diffSecs}s ago`;
-    if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ago`;
+    if (diffSecs < 60) return `${diffSecs}s ${texts.ago}`;
+    if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ${texts.ago}`;
     return date.toLocaleTimeString();
   };
 
@@ -58,41 +60,33 @@ const ServicePlusStats = ({ className = '', refreshInterval = 30000 }) => {
         <div className="flex items-center space-x-3">
           <Icon name="BarChart3" size={24} className="text-primary" />
           <div>
-            <h3 className="text-lg font-semibold text-text-primary">Service+ Analytics</h3>
-            <p className="text-sm text-text-secondary">
-              Real-time statistics and service health
-            </p>
+            <h3 className="text-lg font-semibold text-text-primary">{texts.servicePlusAnalytics}</h3>
+            <p className="text-sm text-text-secondary">{texts.servicePlusAnalyticsDesc}</p>
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-3">
-          {/* Service Health Indicator */}
           {health && (
             <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${getHealthStatusColor(health.status)}`}>
               <div className={`w-2 h-2 rounded-full ${
-                health.status === 'healthy' ? 'bg-green-500' : 
+                health.status === 'healthy' ? 'bg-green-500' :
                 health.status === 'degraded' ? 'bg-yellow-500' : 'bg-red-500'
               }`}></div>
               <span className="font-medium">
-                {health.status === 'healthy' ? 'Operational' : 
-                 health.status === 'degraded' ? 'Degraded' : 'Unavailable'}
+                {health.status === 'healthy' ? texts.operational :
+                 health.status === 'degraded' ? texts.degraded : texts.unavailable}
               </span>
             </div>
           )}
-          
-          {/* Refresh Button */}
+
           <button
             onClick={handleRefresh}
             disabled={loading}
             className="flex items-center space-x-2 px-3 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50"
-            title="Refresh statistics"
+            title={texts.refreshStatistics}
           >
-            <Icon 
-              name="RefreshCw" 
-              size={16} 
-              className={loading ? 'animate-spin' : ''} 
-            />
-            <span className="hidden sm:inline">Refresh</span>
+            <Icon name="RefreshCw" size={16} className={loading ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">{texts.refresh}</span>
           </button>
         </div>
       </div>
@@ -107,147 +101,138 @@ const ServicePlusStats = ({ className = '', refreshInterval = 30000 }) => {
         </div>
       )}
 
-              {/* Statistics Grid - All Services */}
+      {/* Statistics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        {/* Total Comparisons */}
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="GitCompare" size={20} className="text-blue-600" />
-            <span className="text-xs text-blue-600 font-medium">Compare</span>
+            <span className="text-xs text-blue-600 font-medium">{texts.compare}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-blue-800">{stats.totalComparisons}</p>
-            <p className="text-xs text-blue-700">Comparisons</p>
+            <p className="text-xs text-blue-700">{texts.comparisons}</p>
           </div>
         </div>
 
-        {/* Generated Documents */}
         <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="FileText" size={20} className="text-green-600" />
-            <span className="text-xs text-green-600 font-medium">Generate</span>
+            <span className="text-xs text-green-600 font-medium">{texts.generate}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-green-800">{stats.generatedDocuments || 0}</p>
-            <p className="text-xs text-green-700">Documents</p>
+            <p className="text-xs text-green-700">{texts.documents}</p>
           </div>
         </div>
 
-        {/* Case Analyses */}
         <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="Brain" size={20} className="text-purple-600" />
-            <span className="text-xs text-purple-600 font-medium">Analyze</span>
+            <span className="text-xs text-purple-600 font-medium">{texts.analyze}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-purple-800">{stats.caseAnalyses || 0}</p>
-            <p className="text-xs text-purple-700">Analyses</p>
+            <p className="text-xs text-purple-700">{texts.analyses}</p>
           </div>
         </div>
 
-        {/* Today's Activity */}
         <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="TrendingUp" size={20} className="text-orange-600" />
-            <span className="text-xs text-orange-600 font-medium">Today</span>
+            <span className="text-xs text-orange-600 font-medium">{texts.today}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-orange-800">
               {(stats.todayComparisons || 0) + (stats.todayGenerations || 0) + (stats.todayAnalyses || 0)}
             </p>
-            <p className="text-xs text-orange-700">Total Activity</p>
+            <p className="text-xs text-orange-700">{texts.totalActivity}</p>
           </div>
         </div>
 
-        {/* Average Similarity */}
         <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-4 border border-indigo-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="Target" size={20} className="text-indigo-600" />
-            <span className="text-xs text-indigo-600 font-medium">Similarity</span>
+            <span className="text-xs text-indigo-600 font-medium">{texts.similarity}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-indigo-800">{stats.avgSimilarity || 0}%</p>
-            <p className="text-xs text-indigo-700">Avg Score</p>
+            <p className="text-xs text-indigo-700">{texts.avgScore}</p>
           </div>
         </div>
 
-        {/* Available Documents */}
         <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 border border-amber-200">
           <div className="flex items-center justify-between mb-2">
             <Icon name="Database" size={20} className="text-amber-600" />
-            <span className="text-xs text-amber-600 font-medium">Library</span>
+            <span className="text-xs text-amber-600 font-medium">{texts.library}</span>
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-bold text-amber-800">{stats.availableDocuments || 0}</p>
-            <p className="text-xs text-amber-700">Documents</p>
+            <p className="text-xs text-amber-700">{texts.documents}</p>
           </div>
         </div>
       </div>
 
       {/* Service Breakdown */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* Comparison Details */}
         <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
           <div className="flex items-center space-x-2 mb-3">
             <Icon name="GitCompare" size={18} className="text-blue-600" />
-            <h4 className="font-semibold text-blue-900">Document Comparison</h4>
+            <h4 className="font-semibold text-blue-900">{texts.documentComparison}</h4>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-blue-700">Total Comparisons:</span>
+              <span className="text-blue-700">{texts.totalComparisons}:</span>
               <span className="font-medium text-blue-900">{stats.totalComparisons || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-blue-700">Today:</span>
+              <span className="text-blue-700">{texts.today}:</span>
               <span className="font-medium text-blue-900">{stats.todayComparisons || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-blue-700">Avg Similarity:</span>
+              <span className="text-blue-700">{texts.avgSimilarityLabel}:</span>
               <span className="font-medium text-blue-900">{stats.avgSimilarity || 0}%</span>
             </div>
           </div>
         </div>
 
-        {/* Generation Details */}
         <div className="bg-green-50 rounded-lg p-4 border border-green-200">
           <div className="flex items-center space-x-2 mb-3">
             <Icon name="FileText" size={18} className="text-green-600" />
-            <h4 className="font-semibold text-green-900">Document Generation</h4>
+            <h4 className="font-semibold text-green-900">{texts.documentGeneration}</h4>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-green-700">Total Generated:</span>
+              <span className="text-green-700">{texts.totalGenerated}:</span>
               <span className="font-medium text-green-900">{stats.generatedDocuments || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-green-700">Today:</span>
+              <span className="text-green-700">{texts.today}:</span>
               <span className="font-medium text-green-900">{stats.todayGenerations || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-green-700">Status:</span>
-              <span className="font-medium text-green-900">Active</span>
+              <span className="text-green-700">{texts.status}:</span>
+              <span className="font-medium text-green-900">{texts.active}</span>
             </div>
           </div>
         </div>
 
-        {/* Analysis Details */}
         <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
           <div className="flex items-center space-x-2 mb-3">
             <Icon name="Brain" size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-purple-900">Case Analysis</h4>
+            <h4 className="font-semibold text-purple-900">{texts.caseAnalysis}</h4>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-purple-700">Total Analyses:</span>
+              <span className="text-purple-700">{texts.totalAnalyses}:</span>
               <span className="font-medium text-purple-900">{stats.caseAnalyses || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-purple-700">Today:</span>
+              <span className="text-purple-700">{texts.today}:</span>
               <span className="font-medium text-purple-900">{stats.todayAnalyses || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-purple-700">Status:</span>
-              <span className="font-medium text-purple-900">Active</span>
+              <span className="text-purple-700">{texts.status}:</span>
+              <span className="font-medium text-purple-900">{texts.active}</span>
             </div>
           </div>
         </div>
@@ -256,52 +241,27 @@ const ServicePlusStats = ({ className = '', refreshInterval = 30000 }) => {
       {/* Service Status Details */}
       <div className="border-t border-border-light pt-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Comparison Service */}
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className={`w-3 h-3 rounded-full ${
-              health?.service_plus_available ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-text-primary">Document Comparison</p>
-              <p className="text-xs text-text-secondary">
-                {health?.service_plus_available ? 'Operational' : 'Service Unavailable'}
-              </p>
+          {[texts.documentComparison, texts.documentGeneration, texts.caseAnalysis].map((label) => (
+            <div key={label} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+              <div className={`w-3 h-3 rounded-full ${
+                health?.service_plus_available ? 'bg-green-500' : 'bg-red-500'
+              }`}></div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-text-primary">{label}</p>
+                <p className="text-xs text-text-secondary">
+                  {health?.service_plus_available ? texts.operational : texts.serviceUnavailable}
+                </p>
+              </div>
             </div>
-          </div>
-
-          {/* Document Generation */}
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className={`w-3 h-3 rounded-full ${
-              health?.service_plus_available ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-text-primary">Document Generation</p>
-              <p className="text-xs text-text-secondary">
-                {health?.service_plus_available ? 'Operational' : 'Service Unavailable'}
-              </p>
-            </div>
-          </div>
-
-          {/* Case Analysis */}
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-            <div className={`w-3 h-3 rounded-full ${
-              health?.service_plus_available ? 'bg-green-500' : 'bg-red-500'
-            }`}></div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-text-primary">Case Analysis</p>
-              <p className="text-xs text-text-secondary">
-                {health?.service_plus_available ? 'Operational' : 'Service Unavailable'}
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
       {/* Last Updated */}
       <div className="mt-4 flex items-center justify-between text-xs text-text-secondary">
-        <span>Last updated: {formatLastUpdated(lastUpdated)}</span>
+        <span>{texts.lastUpdated}: {formatLastUpdated(lastUpdated)}</span>
         {refreshInterval && (
-          <span>Auto-refresh: {Math.floor(refreshInterval / 1000)}s</span>
+          <span>{texts.autoRefresh}: {Math.floor(refreshInterval / 1000)}s</span>
         )}
       </div>
     </div>
